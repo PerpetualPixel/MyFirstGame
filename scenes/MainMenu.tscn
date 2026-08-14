@@ -1,32 +1,13 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_menu"]
 [ext_resource type="Script" path="res://scripts/audio_synthesizer.gd" id="2_audio"]
+[ext_resource type="Texture2D" path="res://assets/menu/Menu.jpg" id="3_bg"]
+[ext_resource type="AudioStream" path="res://assets/sfx/FireCrackle.mp3" id="4_crackle"]
 
-[sub_resource type="Environment" id="Environment_menu"]
-background_mode = 1
-background_color = Color(0.02, 0.03, 0.08, 1)
-ambient_light_source = 2
-ambient_light_color = Color(0.55, 0.60, 0.85, 1)
-ambient_light_energy = 0.15
-ambient_light_energy_source = 0
-tone_mapper = 3
-glow_enabled = true
-glow_intensity = 1.2
-glow_bloom = 0.25
-glow_blend_mode = 1
-glow_hdr_threshold = 0.8
-glow_hdr_scale = 3.0
-volumetric_fog_enabled = true
-volumetric_fog_density = 0.05
-volumetric_fog_albedo = Color(0.6, 0.55, 0.5, 1)
-volumetric_fog_emission = Color(0.3, 0.2, 0.1, 0.1)
-adjustment_enabled = true
-adjustment_contrast = 1.15
-adjustment_saturation = 1.1
-adjustment_brightness = 0.95
-
-[node name="MainMenu" type="Node3D"]
+[node name="MainMenu" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
 script = ExtResource("1_menu")
 
 [node name="AudioSynthesizer" type="Node" parent="."]
@@ -35,130 +16,112 @@ script = ExtResource("2_audio")
 [node name="MusicPlayer" type="AudioStreamPlayer" parent="."]
 bus = &"Master"
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
-environment = SubResource("Environment_menu")
+[node name="FireCrackle" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("4_crackle")
+volume_db = -14.0
+autoplay = true
+bus = &"Master"
 
-[node name="CameraPivot" type="Node3D" parent="."]
-
-[node name="Camera3D" type="Camera3D" parent="CameraPivot"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.3, 3.4)
-current = true
-
-[node name="UI" type="CanvasLayer" parent="."]
-
-[node name="Root" type="Control" parent="UI"]
+[node name="Background" type="TextureRect" parent="."]
 anchor_right = 1.0
 anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource("3_bg")
+expand_mode = 1
+stretch_mode = 6
 
-[node name="Title" type="Label" parent="UI/Root"]
+[node name="FireFX" type="Node2D" parent="."]
+
+[node name="UI" type="Control" parent="."]
 anchor_right = 1.0
-offset_top = 42.0
-offset_bottom = 116.0
-theme_override_colors/font_color = Color(0.9, 0.76, 0.45, 1)
-theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.7)
-theme_override_constants/shadow_offset_x = 3
-theme_override_constants/shadow_offset_y = 3
-theme_override_font_sizes/font_size = 52
-text = "THE ECCENTRIC INVENTOR'S WILL"
-horizontal_alignment = 1
+anchor_bottom = 1.0
+mouse_filter = 2
 
-[node name="Subtitle" type="Label" parent="UI/Root"]
-anchor_right = 1.0
-offset_top = 118.0
-offset_bottom = 150.0
-theme_override_colors/font_color = Color(0.75, 0.66, 0.5, 1)
-theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
-theme_override_constants/shadow_offset_x = 2
-theme_override_constants/shadow_offset_y = 2
-theme_override_font_sizes/font_size = 20
-text = "A 4-Minute Co-op Puzzle Heist"
-horizontal_alignment = 1
-
-[node name="Buttons" type="VBoxContainer" parent="UI/Root"]
-offset_left = 60.0
-offset_top = 210.0
+[node name="Buttons" type="VBoxContainer" parent="UI"]
+offset_left = 50.0
+offset_top = 214.0
 offset_right = 380.0
-offset_bottom = 590.0
-theme_override_constants/separation = 16
+offset_bottom = 553.0
+theme_override_constants/separation = 21
 
-[node name="StartButton" type="Button" parent="UI/Root/Buttons"]
-custom_minimum_size = Vector2(320, 54)
+[node name="StartButton" type="Button" parent="UI/Buttons"]
+custom_minimum_size = Vector2(330, 51)
 text = "Start Solo Run"
 
-[node name="HostButton" type="Button" parent="UI/Root/Buttons"]
-custom_minimum_size = Vector2(320, 54)
+[node name="HostButton" type="Button" parent="UI/Buttons"]
+custom_minimum_size = Vector2(330, 51)
 text = "Host Co-op Lobby"
 
-[node name="JoinButton" type="Button" parent="UI/Root/Buttons"]
-custom_minimum_size = Vector2(320, 54)
+[node name="JoinButton" type="Button" parent="UI/Buttons"]
+custom_minimum_size = Vector2(330, 51)
 text = "Join Game"
 
-[node name="ControlsButton" type="Button" parent="UI/Root/Buttons"]
-custom_minimum_size = Vector2(320, 54)
+[node name="ControlsButton" type="Button" parent="UI/Buttons"]
+custom_minimum_size = Vector2(330, 51)
 text = "Controls & Settings"
 
-[node name="QuitButton" type="Button" parent="UI/Root/Buttons"]
-custom_minimum_size = Vector2(320, 54)
+[node name="QuitButton" type="Button" parent="UI/Buttons"]
+custom_minimum_size = Vector2(330, 51)
 text = "Quit to Desktop"
 
-[node name="ControlsModal" type="Control" parent="UI/Root"]
+[node name="ControlsModal" type="Control" parent="UI"]
 visible = false
 anchor_right = 1.0
 anchor_bottom = 1.0
 
-[node name="Dim" type="ColorRect" parent="UI/Root/ControlsModal"]
+[node name="Dim" type="ColorRect" parent="UI/ControlsModal"]
 anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0, 0, 0, 0.6)
 
-[node name="Center" type="CenterContainer" parent="UI/Root/ControlsModal"]
+[node name="Center" type="CenterContainer" parent="UI/ControlsModal"]
 anchor_right = 1.0
 anchor_bottom = 1.0
 
-[node name="Panel" type="PanelContainer" parent="UI/Root/ControlsModal/Center"]
+[node name="Panel" type="PanelContainer" parent="UI/ControlsModal/Center"]
 
-[node name="VBox" type="VBoxContainer" parent="UI/Root/ControlsModal/Center/Panel"]
+[node name="VBox" type="VBoxContainer" parent="UI/ControlsModal/Center/Panel"]
 custom_minimum_size = Vector2(500, 0)
 theme_override_constants/separation = 10
 
-[node name="TitleC" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+[node name="TitleC" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 30
 text = "Controls"
 horizontal_alignment = 1
 
-[node name="Move" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+[node name="Move" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18
 text = "[W] [A] [S] [D]  —  Move Character"
 
-[node name="Interact" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+[node name="Interact" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18
 text = "[E]  —  Interact / Rotate Mirror"
 
-[node name="MirrorControl" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+[node name="MirrorControl" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18
 text = "[Mouse]  —  Swivel Mirror (when rotating)"
 
-[node name="Drop" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+[node name="Drop" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18
 text = "[Q]  —  Drop Carried Item"
 
-[node name="Ping" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+[node name="Ping" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18
 text = "[F]  —  Ping Location (co-op)"
 
-[node name="Esc" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+[node name="Esc" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18
 text = "[ESC]  —  Pause / Close Minigame"
 
-[node name="Restart" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+[node name="Restart" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18
 text = "[R]  —  Quick Restart Run"
 
-[node name="CloseControlsButton" type="Button" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+[node name="CloseControlsButton" type="Button" parent="UI/ControlsModal/Center/Panel/VBox"]
 custom_minimum_size = Vector2(0, 46)
 text = "Back"
 
-[node name="MusicVolumeContainer" type="HBoxContainer" parent="UI/Root"]
+[node name="MusicVolumeContainer" type="HBoxContainer" parent="UI"]
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
@@ -169,11 +132,11 @@ offset_right = -20.0
 offset_bottom = -20.0
 theme_override_constants/separation = 12
 
-[node name="MusicLabel" type="Label" parent="UI/Root/MusicVolumeContainer"]
+[node name="MusicLabel" type="Label" parent="UI/MusicVolumeContainer"]
 text = "Music:"
 theme_override_font_sizes/font_size = 16
 
-[node name="MusicVolumeSlider" type="HSlider" parent="UI/Root/MusicVolumeContainer"]
+[node name="MusicVolumeSlider" type="HSlider" parent="UI/MusicVolumeContainer"]
 custom_minimum_size = Vector2(180, 0)
 value = 30.0
 min_value = 0.0
