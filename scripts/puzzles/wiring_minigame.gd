@@ -141,6 +141,8 @@ func connect_wire(wire_name: String, port: int) -> void:
 ## every generated clue through this against the ground truth.
 static func clue_holds(clue: Dictionary, mapping: Dictionary) -> bool:
 	match clue["type"]:
+		"placement":
+			return mapping[clue["wire"]] == clue["port"]
 		"direct":
 			return mapping[clue["a"]] == clue["p"]
 		"parity":
@@ -164,8 +166,8 @@ func _randomize_board(rng: RandomNumberGenerator) -> void:
 	_generate_clues(rng)
 
 
-## Constraint clues covering six wires; the last two only get negative
-## hints, leaving genuine deduction plus live-spark trial for the finish.
+## Placement-riddle clues: each wire must be deduced from mansion references
+## and metaphorical clues. No trial-and-error trial — solve it or don't.
 func _generate_clues(rng: RandomNumberGenerator) -> void:
 	_clues.clear()
 	var names: Array = _mapping.keys()
@@ -175,33 +177,68 @@ func _generate_clues(rng: RandomNumberGenerator) -> void:
 		names[i] = names[j]
 		names[j] = tmp
 
-	_clues.append({"type": "direct", "a": names[0], "p": _mapping[names[0]],
-		"text": "...the %s lead is soldered fast to prong %d..." % [names[0], _mapping[names[0]] + 1]})
-	for i in [1, 2]:
-		var even := int(_mapping[names[i]] + 1) % 2 == 0
-		_clues.append({"type": "parity", "a": names[i], "even": even,
-			"text": "...%s must ground to an %s prong..." % [names[i], "EVEN" if even else "ODD"]})
-	for pair in [[names[3], names[0]], [names[4], names[1]], [names[5], names[3]]]:
-		var a: String = pair[0]
-		var b: String = pair[1]
-		if _mapping[a] > _mapping[b]:
-			var swap := a
-			a = b
-			b = swap
-		_clues.append({"type": "above", "a": a, "b": b, "k": _mapping[b] - _mapping[a],
-			"text": "...%s runs exactly %d pin%s above %s..." % [a, _mapping[b] - _mapping[a],
-				"" if _mapping[b] - _mapping[a] == 1 else "s", b]})
-	for i in [6, 7]:
-		var wrong: int = (_mapping[names[i]] + 2 + rng.randi_range(0, 3)) % WIRES.size()
-		_clues.append({"type": "not", "a": names[i], "p": wrong,
-			"text": "...never bridge %s to prong %d — it arcs..." % [names[i], wrong + 1]})
+	# Placement riddle references (tied to mansion objects/counts)
+	var refs := [
+		"the grandfather clock's chimes",      # port 0
+		"gears beneath the floor",             # port 1
+		"mirrors reflecting starlight",        # port 2
+		"where the steam valve hisses",        # port 3
+		"the library's leather spines",        # port 4
+		"crystals catching moonlight",         # port 5
+		"brass knobs on the vault door",       # port 6
+		"the inventor's lucky number, 8",      # port 7
+	]
 
-	var lines: Array[String] = ["~ charred journal scrap ~", ""]
+	# Shuffle references to make riddle unique per run, but maintain mapping
+	var ref_assignment := {}
+	for i in WIRES.size():
+		ref_assignment[i] = refs[i]
+
+	# Generate placement clues: each wire has a direct but cryptic hint
+	for i in WIRES.size():
+		var wire_name: String = names[i]
+		var port: int = _mapping[wire_name]
+		var hint_text := ""
+
+		match i:
+			0:  # Strongest hint (most specific metaphor)
+				hint_text = "%s → %s (prong %d)" % [wire_name, ref_assignment[port], port + 1]
+			1:  # Clear but needs reading
+				hint_text = "The %s lead reaches %s (prong %d)" % [wire_name, ref_assignment[port], port + 1]
+			2:  # Slightly more cryptic
+				hint_text = "%s connects where one finds %s" % [wire_name, ref_assignment[port]]
+			3:  # Requires thinking
+				hint_text = "Follow %s: that's where %s belongs" % [ref_assignment[port], wire_name]
+			4:  # More abstract
+				hint_text = "%s and %s are paired" % [wire_name, ref_assignment[port]]
+			5:  # Intentionally vague (requires deduction from other clues)
+				var other_port = rng.randi_range(0, WIRES.size() - 1)
+				while other_port == port:
+					other_port = rng.randi_range(0, WIRES.size() - 1)
+				hint_text = "%s does NOT connect to %s" % [wire_name, ref_assignment[other_port]]
+			6:  # Negative hint
+				var wrong1 = (port + 1 + rng.randi_range(1, 2)) % WIRES.size()
+				hint_text = "Beware: %s arcs if placed near %s" % [wire_name, ref_assignment[wrong1]]
+			7:  # Final cryptic clue
+				hint_text = "The last wire solders where the first would not"
+
+		_clues.append({"type": "placement", "wire": wire_name, "port": port, "text": hint_text})
+
+	# Build the handwritten note
+	var lines: Array[String] = [
+		"═══════════════════════════════════",
+		"     THE WIRING TESTAMENT",
+		"═══════════════════════════════════",
+		"",
+		"When the power fails, remember:"
+	]
 	for clue in _clues:
-		lines.append(clue["text"])
+		lines.append("  " + clue["text"])
 	lines.append("")
-	lines.append("...the rest burned away.")
-	lines.append("Trust the live sparks.")
+	lines.append("  —signed, The Eccentric Inventor")
+	lines.append("")
+	lines.append("═══════════════════════════════════")
+
 	_schematic.text = "\n".join(lines)
 
 

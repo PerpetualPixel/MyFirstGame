@@ -126,10 +126,10 @@ func _update_tension(delta: float) -> void:
 		_vignette.material.set_shader_parameter("pulse", 0.0)
 	_timer_label.scale = Vector2.ONE * (1.0 + 0.06 * pulse)
 	_heartbeat_accum += delta
-	var interval := 0.5 if urgent else 1.0  # 120 BPM when urgent
+	var interval := 0.65 if urgent else 1.0  # ~92 BPM when urgent
 	if _heartbeat_accum >= interval:
 		_heartbeat_accum = 0.0
-		AudioSynthesizer.play_ui("heartbeat", -8.0, 1.15 if urgent else 1.0)
+		AudioSynthesizer.play_ui("heartbeat", -16.0, 1.15 if urgent else 1.0)
 
 
 ## Off-screen partner tracker: clamp an arrow label to the screen edge in
