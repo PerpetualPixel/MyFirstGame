@@ -14,6 +14,9 @@ extends CharacterBody3D
 
 @export_group("Camera")
 @export var camera_follow_speed: float = 8.0
+@export var camera_zoom_min: float = 2.0
+@export var camera_zoom_max: float = 5.0
+@export var camera_zoom_speed: float = 0.3
 
 @onready var camera_pivot: Node3D = $CameraPivot
 @onready var _camera: Camera3D = $CameraPivot/Camera3D
@@ -389,7 +392,7 @@ func _update_wall_fade(delta: float) -> void:
 		var mat: StandardMaterial3D = wall.material
 		if mat == null:
 			continue
-		var target := 0.2 if _wall_blocking.has(wall) else 1.0
+		var target := 0.5 if _wall_blocking.has(wall) else 1.0
 		var alpha: float = mat.albedo_color.a
 		if absf(alpha - target) < 0.004:
 			if target >= 1.0 and mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
@@ -493,6 +496,14 @@ func _update_prompt() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_local_player() or ui_locked:
 		return
+	# Scroll wheel zoom: adjust camera distance
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_camera.position.z = clampf(_camera.position.z - camera_zoom_speed, camera_zoom_min, camera_zoom_max)
+			get_viewport().set_input_as_handled()
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_camera.position.z = clampf(_camera.position.z + camera_zoom_speed, camera_zoom_min, camera_zoom_max)
+			get_viewport().set_input_as_handled()
 	# Mirror rotation: mouse motion swivels; E or ESC exits.
 	if _adjusting_mirror:
 		if event is InputEventMouseMotion:

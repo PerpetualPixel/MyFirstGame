@@ -15,6 +15,9 @@ var _ready_peers := {}
 
 
 func _ready() -> void:
+	# Stop menu ambience (procedural audio) so it doesn't distract during gameplay
+	_stop_menu_ambience()
+
 	mansion.puzzle_solved.connect(_on_puzzle_solved)
 
 	if not NetworkSession.multiplayer_active or multiplayer.multiplayer_peer == null:
@@ -74,3 +77,10 @@ func _on_peer_left(id: int) -> void:
 
 func _on_puzzle_solved() -> void:
 	print("Puzzle solved: the Vault Study hums with light!")
+
+
+func _stop_menu_ambience() -> void:
+	# Stop the procedural ambience audio loops that play on menu
+	for player in get_tree().get_nodes_in_group("ui_audio"):
+		if player is AudioStreamPlayer:
+			player.stop()

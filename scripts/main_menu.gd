@@ -48,8 +48,12 @@ func _ready() -> void:
 		_music_player.play()
 
 	# Ambience: warm jazz-like ambient tone + fire crackle for cozy fireplace feel.
-	AudioSynthesizer.create_ui_loop("jazz_ambient", -16.0)
-	AudioSynthesizer.create_ui_loop("fire_crackle", -24.0)
+	var jazz := AudioSynthesizer.create_ui_loop("jazz_ambient", -16.0)
+	var crackle := AudioSynthesizer.create_ui_loop("fire_crackle", -24.0)
+	if jazz:
+		jazz.add_to_group("ui_audio")
+	if crackle:
+		crackle.add_to_group("ui_audio")
 
 
 func _process(delta: float) -> void:
