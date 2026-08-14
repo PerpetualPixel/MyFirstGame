@@ -1,9 +1,9 @@
 class_name MainMenu
 extends Node3D
 
-## Cinematic 3D main menu: a moody diorama of the inventor's desk under a
-## slow orbiting camera. Solo runs launch straight into Main; co-op buttons
-## route to the Lobby scene (ENet LAN, port 8910).
+## Enhanced cinematic 3D main menu: inventor's desk with dynamic fireplace,
+## flickering fire lighting, particles, and spatial audio. Solo runs launch
+## straight into Main; co-op buttons route to the Lobby scene.
 
 const MAIN_SCENE := "res://scenes/Main.tscn"
 const LOBBY_SCENE := "res://scenes/Lobby.tscn"
@@ -15,7 +15,9 @@ const LOBBY_SCENE := "res://scenes/Lobby.tscn"
 @onready var _music_slider: HSlider = $UI/Root/MusicVolumeContainer/MusicVolumeSlider
 
 var _gears: Array[MeshInstance3D] = []
+var _fireplace_light: OmniLight3D
 var _orbit_time := 0.0
+var _fire_flicker_time := 0.0
 var _music_stream: AudioStream
 
 
@@ -25,6 +27,7 @@ func _ready() -> void:
 	multiplayer.multiplayer_peer = null
 
 	_build_diorama()
+	_build_fireplace()
 	_style_buttons()
 
 	$UI/Root/Buttons/StartButton.pressed.connect(_start_solo)
@@ -47,14 +50,6 @@ func _ready() -> void:
 		_music_player.volume_db = linear_to_db(0.3)
 		_music_player.play()
 
-	# Ambience: warm jazz-like ambient tone + fire crackle for cozy fireplace feel.
-	var jazz := AudioSynthesizer.create_ui_loop("jazz_ambient", -16.0)
-	var crackle := AudioSynthesizer.create_ui_loop("fire_crackle", -24.0)
-	if jazz:
-		jazz.add_to_group("ui_audio")
-	if crackle:
-		crackle.add_to_group("ui_audio")
-
 
 func _process(delta: float) -> void:
 	_orbit_time += delta
@@ -63,12 +58,110 @@ func _process(delta: float) -> void:
 	_camera.look_at(Vector3(0, 1.0, 0))
 	for gear in _gears:
 		gear.rotate_object_local(Vector3.UP, delta * 0.8)
+	# Organic fire flicker: randomize light energy and slight position drift
+	if _fireplace_light:
+		_fire_flicker_time += delta
+		var flicker := sin(_fire_flicker_time * 3.2) * 0.15 + sin(_fire_flicker_time * 1.1 + 10.0) * 0.1
+		_fireplace_light.light_energy = clampf(2.0 + flicker + randf_range(-0.2, 0.2), 1.2, 2.8)
+		_fireplace_light.position.x = randf_range(-0.1, 0.1)
 
 
 func _on_music_volume_changed(value: float) -> void:
 	var volume_db := linear_to_db(value / 100.0)
 	if _music_player:
 		_music_player.volume_db = volume_db
+
+
+func _build_fireplace() -> void:
+	# Fireplace structure: rustic stone/brick background behind desk
+	var fireplace_back := CSGBox3D.new()
+	fireplace_back.size = Vector3(3.2, 2.8, 0.2)
+	fireplace_back.position = Vector3(0, 1.4, -3.5)
+	fireplace_back.material = _mat(Color(0.35, 0.25, 0.18), 0.2, 0.8)
+	add_child(fireplace_back)
+
+	var fireplace_base := CSGBox3D.new()
+	fireplace_base.size = Vector3(3.2, 0.3, 1.2)
+	fireplace_base.position = Vector3(0, 0.15, -2.8)
+	fireplace_base.material = _mat(Color(0.3, 0.2, 0.12), 0.1, 0.85)
+	add_child(fireplace_base)
+
+	# Fireplace opening frame
+	var opening_left := CSGBox3D.new()
+	opening_left.size = Vector3(0.15, 1.8, 0.5)
+	opening_left.position = Vector3(-1.3, 0.9, -2.8)
+	opening_left.material = _mat(Color(0.2, 0.15, 0.1), 0.05, 0.9)
+	add_child(opening_left)
+
+	var opening_right := CSGBox3D.new()
+	opening_right.size = Vector3(0.15, 1.8, 0.5)
+	opening_right.position = Vector3(1.3, 0.9, -2.8)
+	opening_right.material = _mat(Color(0.2, 0.15, 0.1), 0.05, 0.9)
+	add_child(opening_right)
+
+	# Dynamic fireplace light with shadows and warm color
+	_fireplace_light = OmniLight3D.new()
+	_fireplace_light.light_color = Color(1.0, 0.62, 0.3)  # Warm orange/amber
+	_fireplace_light.light_energy = 2.0
+	_fireplace_light.omni_range = 6.5
+	_fireplace_light.shadow_enabled = true
+	_fireplace_light.shadow_blur = 2.5
+	_fireplace_light.position = Vector3(0, 1.2, -2.5)
+	add_child(_fireplace_light)
+
+	# Fire particles: stylized flames rising from fireplace
+	var fire_particles := GPUParticles3D.new()
+	fire_particles.amount = 64
+	fire_particles.lifetime = 2.2
+	fire_particles.position = Vector3(0, 0.8, -2.8)
+
+	var fire_mat := ParticleProcessMaterial.new()
+	fire_mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	fire_mat.emission_box_extents = Vector3(0.8, 0.3, 0.4)
+	fire_mat.direction = Vector3(0, 1, 0)
+	fire_mat.spread = 35.0
+	fire_mat.initial_velocity_min = 1.2
+	fire_mat.initial_velocity_max = 2.8
+	fire_mat.gravity = Vector3(0, -0.5, 0)
+	fire_mat.scale_min = 0.6
+	fire_mat.scale_max = 1.6
+	fire_mat.scale_curve = _get_fire_fade_curve()
+	fire_particles.process_material = fire_mat
+
+	# Fire mesh: soft quad with orange-yellow gradient
+	var fire_mesh := QuadMesh.new()
+	fire_mesh.size = Vector2(1.0, 1.5)
+	var fire_material := StandardMaterial3D.new()
+	fire_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fire_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fire_material.albedo_color = Color(1.0, 0.85, 0.4, 0.8)
+	fire_material.emission_enabled = true
+	fire_material.emission = Color(1.0, 0.6, 0.2)
+	fire_material.emission_energy_multiplier = 2.0
+	fire_mesh.material = fire_material
+	fire_particles.draw_pass_1 = fire_mesh
+	add_child(fire_particles)
+
+	# Fire crackle audio: spatial positioning at fireplace
+	var fire_audio := AudioStreamPlayer3D.new()
+	var crackle_stream := load("res://assets/sfx/FireCrackle.mp3")
+	if crackle_stream:
+		fire_audio.stream = crackle_stream
+		fire_audio.bus = "Master"
+		fire_audio.volume_db = -16.0
+		fire_audio.autoplay = true
+		fire_audio.max_db = 0.0
+		fire_audio.unit_size = 2.0
+		fire_audio.position = Vector3(0, 1.0, -2.8)
+		add_child(fire_audio)
+
+
+func _get_fire_fade_curve() -> Curve:
+	var curve := Curve.new()
+	curve.add_point(Vector2(0.0, 1.0))
+	curve.add_point(Vector2(0.5, 0.8))
+	curve.add_point(Vector2(1.0, 0.0))
+	return curve
 
 
 func _start_solo() -> void:
