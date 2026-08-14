@@ -32,13 +32,9 @@ func _ready() -> void:
 	$UI/Root/ControlsModal/Center/Panel/VBox/CloseControlsButton.pressed.connect(
 		func() -> void: _controls_modal.visible = false)
 
-	# Ambience: wind/rain bed plus a slow grandfather-clock tick.
-	AudioSynthesizer.create_ui_loop("wind", -14.0)
-	var tick := Timer.new()
-	tick.wait_time = 1.2
-	tick.autostart = true
-	tick.timeout.connect(func() -> void: AudioSynthesizer.play_ui("tick", -18.0, 0.8))
-	add_child(tick)
+	# Ambience: warm jazz-like ambient tone + fire crackle for cozy fireplace feel.
+	AudioSynthesizer.create_ui_loop("jazz_ambient", -16.0)
+	AudioSynthesizer.create_ui_loop("fire_crackle", -24.0)
 
 
 func _process(delta: float) -> void:

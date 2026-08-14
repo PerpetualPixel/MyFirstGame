@@ -25,6 +25,8 @@ func _ready() -> void:
 	_streams["footstep_wood"] = _gen_footstep(260.0, 0.10)
 	_streams["footstep_stone"] = _gen_footstep(900.0, 0.07)
 	_streams["wind"] = _gen_wind()
+	_streams["jazz_ambient"] = _gen_jazz_ambient()
+	_streams["fire_crackle"] = _gen_fire_crackle()
 
 
 func _exit_tree() -> void:
@@ -243,3 +245,47 @@ static func _gen_footstep(tone_hz: float, dur: float) -> AudioStreamWAV:
 		lp += cutoff * ((randf() * 2.0 - 1.0) - lp)
 		s[i] = lp * exp(-t * 42.0) * 0.9 + sin(TAU * tone_hz * 0.35 * t) * exp(-t * 60.0) * 0.25
 	return _make_wav(s)
+
+
+## Warm, mellow ambient jazz-like tone: low-pass filtered sine with slow
+## amplitude breath and subtle harmonic layers. Looping, relaxing.
+static func _gen_jazz_ambient() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 8.0)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var lp := 0.0
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		# Low fundamental with slow breath (8 s cycle)
+		var fundamental := sin(TAU * 72.0 * t) * (0.5 + 0.5 * sin(TAU * t / 8.0))
+		# Warm harmonic layer (softer, slightly higher)
+		var harmonic := sin(TAU * 108.0 * t) * (0.3 + 0.2 * sin(TAU * t / 6.5))
+		# Sub-bass warmth
+		var sub := sin(TAU * 36.0 * t) * 0.2
+		var raw := fundamental + harmonic + sub
+		# Low-pass for smooth, mellow character
+		lp += 0.08 * (raw - lp)
+		s[i] = lp * 0.7
+	return _make_wav(s, true)
+
+
+## Fire crackle: sparse random pops and hisses at various pitches with
+## quick decay. Looping, creates ambient warmth.
+static func _gen_fire_crackle() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 3.0)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		# Sparse crackle: pop when random event fires
+		var pop := 0.0
+		if randf() < 0.006:  # ~18 pops per 3 seconds
+			var pop_pitch := 200.0 + randf() * 600.0  # 200–800 Hz
+			var pop_life := 0.02 + randf() * 0.08  # Quick decay
+			pop = sin(TAU * pop_pitch * fmod(t, 3.0)) * exp(-fmod(t, 3.0) / pop_life) * 0.5
+		# Low-pass hiss underbelly (very quiet)
+		var hiss := (randf() * 2.0 - 1.0) * 0.12
+		var lp_hiss := 0.0
+		lp_hiss += 0.04 * (hiss - lp_hiss)
+		s[i] = pop + lp_hiss * 0.3
+	return _make_wav(s, true)
