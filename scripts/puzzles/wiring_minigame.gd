@@ -47,18 +47,19 @@ const SEQUENCE := [
 	["Copper", 3],
 ]
 
-## Board-space (1024x576) centers of the 8 crimp leads, left-to-right,
-## matching WIRES order. Measured off the painted art.
+## Board-space (1024x576) centers of the 8 colored crimp tags,
+## left-to-right, matching WIRES order. Measured off the painted art.
 const TERMINAL_POS := [
-	Vector2(152, 390), Vector2(190, 390), Vector2(228, 390), Vector2(266, 390),
-	Vector2(304, 390), Vector2(342, 390), Vector2(380, 390), Vector2(418, 390),
+	Vector2(167, 388), Vector2(204, 388), Vector2(240, 388), Vector2(276, 388),
+	Vector2(313, 388), Vector2(350, 388), Vector2(384, 388), Vector2(420, 388),
 ]
 
-## Board-space centers of port screws 1-8 on the right terminal block:
-## two rows of four (1-4 top, 5-8 bottom).
+## Board-space centers of port screws on the painted terminal block:
+## ports 1-6 across the top screw row, 7-8 on the bottom-right screws
+## (matching the block's painted labels).
 const PORT_POS := [
-	Vector2(685, 325), Vector2(745, 325), Vector2(805, 325), Vector2(865, 325),
-	Vector2(685, 402), Vector2(745, 402), Vector2(805, 402), Vector2(865, 402),
+	Vector2(673, 320), Vector2(710, 320), Vector2(748, 320), Vector2(786, 320),
+	Vector2(824, 320), Vector2(862, 320), Vector2(824, 380), Vector2(862, 380),
 ]
 
 var is_open := false
@@ -247,14 +248,14 @@ func _spark_at(pos: Vector2) -> void:
 func _build_hotspots() -> void:
 	for i in WIRES.size():
 		var wire: Array = WIRES[i]
-		var b := _make_hotspot(TERMINAL_POS[i], Vector2(34, 56), wire[1])
+		var b := _make_hotspot(TERMINAL_POS[i], Vector2(32, 48), wire[1])
 		b.tooltip_text = wire[0]
 		b.pressed.connect(_on_terminal_pressed.bind(wire[0]))
 		b.button_down.connect(_on_terminal_drag_start.bind(wire[0]))
 		_hotspots.add_child(b)
 		_terminal_buttons[wire[0]] = b
 	for i in PORT_POS.size():
-		var p := _make_hotspot(PORT_POS[i], Vector2(46, 40), Color(0.85, 0.7, 0.3))
+		var p := _make_hotspot(PORT_POS[i], Vector2(34, 34), Color(0.85, 0.7, 0.3))
 		p.tooltip_text = "Port %d" % (i + 1)
 		p.pressed.connect(_on_port_pressed.bind(i))
 		var badge := Label.new()
