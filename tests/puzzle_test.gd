@@ -1,65 +1,67 @@
 extends SceneTree
-## Laser mirror-maze regression: five mirrors exist (4 route + 1 decoy),
-## closed doors block the beam, and aligning the four route mirrors to
-## their 45-degree solution threads the beam around the privacy screen,
-## through the doorframes, and into the receiver.
+## Laser route regression: iterates ALL route variants via route_override,
+## proving each is solvable at its published solution angles — and that
+## closed doors block the beam (checked on the first variant).
 ## Run: godot --headless --path . --script res://tests/puzzle_test.gd
-
-const ROUTE_SPOTS := [
-	Vector3(-10, 0, 3), Vector3(-7, 0, 3), Vector3(-7, 0, 0), Vector3(0, 0, 0),
-]
 
 func _initialize() -> void:
 	_run()
 
 
 func _run() -> void:
-	var main: Node = (load("res://scenes/Main.tscn") as PackedScene).instantiate()
-	root.add_child(main)
-	for i in 30:
-		await physics_frame
+	for variant in 3:
+		var main: Node = (load("res://scenes/Main.tscn") as PackedScene).instantiate()
+		var gen: MansionGenerator = main.get_node("MansionGenerator")
+		gen.route_override = variant
+		root.add_child(main)
+		for i in 30:
+			await physics_frame
 
-	var mirrors: Array = []
-	var receivers: Array = []
-	var emitters: Array = []
-	_collect(main, mirrors, receivers, emitters)
-	print("found: %d emitter(s), %d mirror(s), %d receiver(s)" % [emitters.size(), mirrors.size(), receivers.size()])
-	if emitters.size() != 1 or mirrors.size() != 5 or receivers.size() != 1:
-		print("TEST FAIL: unexpected puzzle element counts")
-		quit(1)
-		return
-	var receiver: LightReceiver = receivers[0]
-
-	# Align the whole route; with doors closed the beam must stay blocked.
-	var route: Array = []
-	for spot in ROUTE_SPOTS:
-		var m := _mirror_near(mirrors, spot)
-		if m == null:
-			print("TEST FAIL: no mirror at expected spot %s" % spot)
+		var route: Dictionary = gen.active_route
+		print("--- variant %d: %s ---" % [variant, route["name"]])
+		var mirrors: Array = []
+		var receivers: Array = []
+		var emitters: Array = []
+		_collect(main, mirrors, receivers, emitters)
+		if emitters.size() != 1 or mirrors.size() != 5 or receivers.size() != 1:
+			print("TEST FAIL [%s]: counts wrong (%d emitters, %d mirrors, %d receivers)" % [route["name"], emitters.size(), mirrors.size(), receivers.size()])
 			quit(1)
 			return
-		# Panels are 45 degrees local: root yaw 0 is the solved detent.
-		m.rotation.y = 0.0
-		route.append(m)
-	for i in 60:
-		await physics_frame
-	if receiver.is_solved:
-		print("TEST FAIL: beam reached receiver through CLOSED doors")
-		quit(1)
-		return
+		var receiver: LightReceiver = receivers[0]
 
-	var doors := _find_doors(main)
-	print("opening %d hinged door(s)" % doors.size())
-	for door in doors:
-		door.set_open(true)
-	for i in 120:
-		await physics_frame
+		# Align the whole route to its solution.
+		var spots: Array = route["mirrors"]
+		var solutions: Array = route["solutions"]
+		for i in spots.size():
+			var m := _mirror_near(mirrors, spots[i])
+			if m == null:
+				print("TEST FAIL [%s]: no mirror at %s" % [route["name"], spots[i]])
+				quit(1)
+				return
+			m.rotation.y = deg_to_rad(solutions[i])
 
-	if not receiver.is_solved:
-		print("TEST FAIL: aligned maze route did not solve the receiver")
-		quit(1)
-		return
-	print("TEST PASS: mirror maze threads the beam to the receiver")
+		if variant == 0:
+			for i in 60:
+				await physics_frame
+			if receiver.is_solved:
+				print("TEST FAIL: beam reached receiver through CLOSED doors")
+				quit(1)
+				return
+
+		for door in _find_doors(main):
+			door.set_open(true)
+		for i in 120:
+			await physics_frame
+		if not receiver.is_solved:
+			print("TEST FAIL [%s]: aligned route did not solve the receiver" % route["name"])
+			quit(1)
+			return
+		print("variant '%s' solvable" % route["name"])
+		main.queue_free()
+		for i in 5:
+			await physics_frame
+
+	print("TEST PASS: all laser route variants are solvable")
 	quit(0)
 
 

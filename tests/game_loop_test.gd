@@ -7,10 +7,6 @@ extends SceneTree
 ## maze -> Will to the porch exit -> WIN. Plus pause menu checks.
 ## Run: godot --headless --path . --script res://tests/game_loop_test.gd
 
-const ROUTE_SPOTS := [
-	Vector3(-10, 0, 3), Vector3(-7, 0, 3), Vector3(-7, 0, 0), Vector3(0, 0, 0),
-]
-
 func _initialize() -> void:
 	_run()
 
@@ -21,6 +17,9 @@ func _run() -> void:
 	for i in 30:
 		await physics_frame
 
+	var gen: MansionGenerator = main.get_node("MansionGenerator")
+	var route: Dictionary = gen.active_route
+	print("run layout: route=%s valves=%s clock=%s gears=%s" % [route["name"], gen._valve_cells, gen._clock_cell, gen._gear_cells])
 	var player: Player = main.get_node("Player")
 	var gm: GameManager = main.get_node("GameManager")
 	var pause_menu: PauseMenu = main.get_node("PauseMenu")
@@ -99,7 +98,7 @@ func _run() -> void:
 		return
 
 	# --- Free-angle swivel: adjust moves smoothly, release snaps to 15° ---
-	var swivel := _mirror_near(mirrors, ROUTE_SPOTS[0])
+	var swivel := _mirror_near(mirrors, route["mirrors"][0])
 	var before := swivel.rotation.y
 	swivel.adjust(1.0, 0.2)  # 12 degrees of hold-swivel
 	if absf(swivel.rotation.y - before) < 0.15:
@@ -190,10 +189,9 @@ func _run() -> void:
 	# --- Laser maze ---
 	for door in hinged:
 		door.set_open(true)
-	# Panels are mounted at 45 degrees locally, so root yaw 0 is the solved
-	# detent for every axis-aligned turn on this route.
-	for spot in ROUTE_SPOTS:
-		_mirror_near(mirrors, spot).rotation.y = 0.0
+	# Align this run's route to its published solution angles.
+	for i in route["mirrors"].size():
+		_mirror_near(mirrors, route["mirrors"][i]).rotation.y = deg_to_rad(route["solutions"][i])
 	for i in 90:
 		await physics_frame
 	if not gm._light_done:

@@ -16,7 +16,6 @@ signal puzzle_solved
 const GRID_SIZE := Vector2i(3, 3)
 const FOYER_CELL := Vector2i(1, 2)
 const VAULT_STUDY_CELL := Vector2i(1, 0)
-const CLOCK_CELL := Vector2i(1, 1)          ## Central parlor.
 const PARLOR_CELL := Vector2i(2, 0)         ## Fireplace parlor.
 
 const LIGHT_EMITTER_SCENE := preload("res://scenes/Puzzles/LightEmitter.tscn")
@@ -32,31 +31,72 @@ const ROOM_SHROUD_SCENE := preload("res://scenes/RoomShroud.tscn")
 const CLOCKWORK_SCENE := preload("res://scenes/Puzzles/ClockworkMechanism.tscn")
 const BRASS_GEAR_SCENE := preload("res://scenes/BrassGear.tscn")
 
-## Laser route: emitter in the bottom-left room fires north into the
-## middle-left room, which is a mirror maze — a tall privacy screen blocks
-## the straight line, forcing three bounces (A1 east, A2 north, A3 east)
-## before the beam threads the doorway into the central parlor, where
-## mirror B turns it north through the vault gate's slit to the receiver.
-## All four route mirrors solve at a 45-degree panel alignment.
-const PUZZLE_EMITTER_CELL := Vector2i(0, 2)
-const PUZZLE_MIRROR_SPOTS: Array[Vector3] = [
-	Vector3(-10, 0, 3), Vector3(-7, 0, 3), Vector3(-7, 0, 0), Vector3(0, 0, 0),
+## Three hand-authored, guaranteed-solvable laser routes; one is drawn per
+## run. Every route ends with a mirror at the parlor center turning the
+## beam north through the vault gate's slit. "solutions" are the solved
+## root yaws in degrees (panels are mounted at 45 degrees locally), so
+## different routes need genuinely different alignments.
+const ROUTE_VARIANTS := [
+	{
+		"name": "west_maze",
+		"emitter": Vector3(-10, 0, 12.5),
+		"maze_cell": Vector2i(0, 1),
+		"mirrors": [Vector3(-10, 0, 3), Vector3(-7, 0, 3), Vector3(-7, 0, 0), Vector3(0, 0, 0)],
+		"solutions": [0.0, 0.0, 0.0, 0.0],
+		"screen": Vector3(-10, 1.5, 1.2),
+		"doors": [[Vector2i(0, 2), Vector2i(0, 1)], [Vector2i(0, 1), Vector2i(1, 1)]],
+	},
+	{
+		"name": "east_maze",
+		"emitter": Vector3(10, 0, 12.5),
+		"maze_cell": Vector2i(2, 1),
+		"mirrors": [Vector3(10, 0, 3), Vector3(7, 0, 3), Vector3(7, 0, 0), Vector3(0, 0, 0)],
+		"solutions": [90.0, 90.0, 90.0, 90.0],
+		"screen": Vector3(10, 1.5, 1.2),
+		"doors": [[Vector2i(2, 2), Vector2i(2, 1)], [Vector2i(2, 1), Vector2i(1, 1)]],
+	},
+	{
+		"name": "parlor_loop",
+		"emitter": Vector3(0, 0, 13.0),
+		"maze_cell": Vector2i(1, 1),
+		"mirrors": [Vector3(0, 0, 3), Vector3(3, 0, 3), Vector3(3, 0, 0), Vector3(0, 0, 0)],
+		"solutions": [0.0, 0.0, 90.0, 90.0],
+		"screen": Vector3(0, 1.5, 1.8),
+		"doors": [[Vector2i(1, 2), Vector2i(1, 1)]],
+	},
 ]
-const PUZZLE_DECOY_MIRROR_CELL := Vector2i(2, 1)
-const PUZZLE_VALVE_CELLS: Array[Vector2i] = [Vector2i(2, 1), Vector2i(2, 2)]
-const PUZZLE_DOOR_EDGES := [
-	[Vector2i(0, 2), Vector2i(0, 1)],
-	[Vector2i(0, 1), Vector2i(1, 1)],
-	[Vector2i(1, 1), Vector2i(1, 0)],
-	[Vector2i(2, 1), Vector2i(2, 2)],
+## Adjacent room pairs eligible to host the two steam valves (the pair's
+## connecting door is forced open so the 25 s sync sprint stays fair).
+const VALVE_PAIR_OPTIONS := [
+	[Vector2i(2, 1), Vector2i(2, 2)], [Vector2i(0, 1), Vector2i(0, 2)],
+	[Vector2i(2, 0), Vector2i(2, 1)], [Vector2i(0, 0), Vector2i(0, 1)],
+]
+const CLOCK_CELL_OPTIONS: Array[Vector2i] = [Vector2i(1, 1), Vector2i(2, 0), Vector2i(0, 0)]
+const GEAR_CELL_OPTIONS: Array[Vector2i] = [
+	Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(2, 0),
+	Vector2i(2, 1), Vector2i(2, 2), Vector2i(1, 2),
+]
+const DECOY_CELL_OPTIONS: Array[Vector2i] = [
+	Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2),
+	Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2),
 ]
 const TABLE_CELLS: Array[Vector2i] = [Vector2i(0, 0), Vector2i(2, 0), Vector2i(2, 2)]
-## teeth, label, radius, cell (gears hide near the room's north furniture)
+## teeth, label, mesh radius (hiding rooms are drawn per run)
 const GEAR_SPECS := [
-	[8, "Small Gear (8-tooth)", 0.2, Vector2i(0, 0)],
-	[12, "Medium Gear (12-tooth)", 0.28, Vector2i(0, 2)],
-	[16, "Large Gear (16-tooth)", 0.36, Vector2i(2, 2)],
+	[8, "Small Gear (8-tooth)", 0.2],
+	[12, "Medium Gear (12-tooth)", 0.28],
+	[16, "Large Gear (16-tooth)", 0.36],
 ]
+
+## Test hook: force a specific ROUTE_VARIANTS index (-1 = seeded random).
+@export var route_override: int = -1
+
+## The layout drawn for this run (read by tests and debug tools).
+var active_route: Dictionary
+var _valve_cells: Array = []
+var _clock_cell := Vector2i(1, 1)
+var _gear_cells: Array = []
+var _decoy_cell := Vector2i(2, 1)
 
 @export_group("Dimensions")
 @export var room_size: float = 10.0
@@ -119,6 +159,7 @@ func generate() -> void:
 	else:
 		_rng.randomize()
 
+	_pick_run_layout()
 	_carve_doors()
 	_build_geometry()
 	_spawn_puzzle()
@@ -137,6 +178,38 @@ func get_room_center(cell: Vector2i) -> Vector3:
 
 func get_spawn_position() -> Vector3:
 	return get_room_center(FOYER_CELL) + Vector3(0.0, 0.1, room_size * 0.8)
+
+
+## Draw this run's structural layout from the seeded rng: laser route,
+## valve rooms, clock location, gear hiding rooms, and the decoy's spot.
+## Combined with door carving, wiring, and spawn rotations, no two seeds
+## play the same.
+func _pick_run_layout() -> void:
+	if route_override >= 0 and route_override < ROUTE_VARIANTS.size():
+		active_route = ROUTE_VARIANTS[route_override]
+	else:
+		active_route = ROUTE_VARIANTS[_rng.randi_range(0, ROUTE_VARIANTS.size() - 1)]
+	var maze: Vector2i = active_route["maze_cell"]
+
+	var pair_options: Array = VALVE_PAIR_OPTIONS.filter(
+		func(pair: Array) -> bool: return not maze in pair)
+	_valve_cells = pair_options[_rng.randi_range(0, pair_options.size() - 1)]
+
+	var clock_options: Array = CLOCK_CELL_OPTIONS.filter(
+		func(cell: Vector2i) -> bool: return cell != maze)
+	_clock_cell = clock_options[_rng.randi_range(0, clock_options.size() - 1)]
+
+	var gear_pool: Array = GEAR_CELL_OPTIONS.duplicate()
+	for i in range(gear_pool.size() - 1, 0, -1):
+		var j := _rng.randi_range(0, i)
+		var tmp: Vector2i = gear_pool[i]
+		gear_pool[i] = gear_pool[j]
+		gear_pool[j] = tmp
+	_gear_cells = gear_pool.slice(0, GEAR_SPECS.size())
+
+	var decoy_options: Array = DECOY_CELL_OPTIONS.filter(
+		func(cell: Vector2i) -> bool: return cell != maze)
+	_decoy_cell = decoy_options[_rng.randi_range(0, decoy_options.size() - 1)]
 
 
 # --- Door layout ---------------------------------------------------------
@@ -174,7 +247,13 @@ func _carve_doors() -> void:
 				if not _doors.has(key) and _rng.randf() < extra_door_chance:
 					_doors[key] = true
 
-	for edge in PUZZLE_DOOR_EDGES:
+	# Force this run's route doors, the vault doorway, and the valve pair's
+	# connecting door open, whatever the random rolls decided.
+	var forced: Array = []
+	forced.append_array(active_route["doors"])
+	forced.append([Vector2i(1, 1), VAULT_STUDY_CELL])
+	forced.append(_valve_cells)
+	for edge in forced:
 		_doors[_edge_key(edge[0], edge[1])] = true
 
 
@@ -307,12 +386,12 @@ func _add_corner_posts(parent: Node3D) -> void:
 
 func _spawn_puzzle() -> void:
 	var emitter := LIGHT_EMITTER_SCENE.instantiate() as Node3D
-	emitter.position = get_room_center(PUZZLE_EMITTER_CELL) + Vector3(0, 0, 2.5)
+	emitter.position = active_route["emitter"]
 	_generated_root.add_child(emitter)
 
 	# Route mirrors at free random 15-degree detents (closed doors block
 	# the beam anyway, so no spawn can pre-solve the circuit).
-	for spot in PUZZLE_MIRROR_SPOTS:
+	for spot in active_route["mirrors"]:
 		var mirror := ROTATING_MIRROR_SCENE.instantiate() as Node3D
 		mirror.position = spot
 		mirror.rotation.y = deg_to_rad(15.0 * float(_rng.randi_range(0, 23)))
@@ -320,14 +399,13 @@ func _spawn_puzzle() -> void:
 
 	# Decoy mirror: interactable, reflective, entirely useless.
 	var decoy := ROTATING_MIRROR_SCENE.instantiate() as Node3D
-	decoy.position = get_room_center(PUZZLE_DECOY_MIRROR_CELL)
+	decoy.position = get_room_center(_decoy_cell)
 	decoy.rotation.y = deg_to_rad(15.0 * float(_rng.randi_range(0, 23)))
 	_generated_root.add_child(decoy)
 
-	# Maze obstacles: a tall privacy screen splits the mirror room so the
-	# beam must bounce around it; a high bookcase breaks sightlines in the
-	# parlor.
-	_add_prop(Vector3(-10, 1.5, 1.2), Vector3(3, 3, 0.4), _shelf_material)
+	# Maze obstacles: this route's tall privacy screen forces the bounces;
+	# a high bookcase breaks sightlines in the central parlor.
+	_add_prop(active_route["screen"], Vector3(3, 3, 0.4), _shelf_material)
 	_add_prop(Vector3(2.0, 1.5, -2.0), Vector3(2.2, 3, 0.5), _shelf_material)
 
 	var receiver := LIGHT_RECEIVER_SCENE.instantiate() as Node3D
@@ -337,28 +415,43 @@ func _spawn_puzzle() -> void:
 
 	var door := VAULT_DOOR_SCENE.instantiate() as VaultDoor
 	door.position = (get_room_center(Vector2i(1, 1)) + get_room_center(VAULT_STUDY_CELL)) / 2.0
-	door.valves_required = PUZZLE_VALVE_CELLS.size()
 	_generated_root.add_child(door)
 	receiver.puzzle_completed.connect(door.on_light_puzzle_completed)
 
-	for cell in PUZZLE_VALVE_CELLS:
+	door.valves_required = _valve_cells.size()
+	for cell in _valve_cells:
 		var valve := STEAM_VALVE_SCENE.instantiate() as SteamValve
 		valve.position = get_room_center(cell) + Vector3(2.0, 0, 2.0)
 		_generated_root.add_child(valve)
 		valve.valve_activated.connect(door.on_valve_activated)
 		valve.valve_reset.connect(door.on_valve_reset)
 
-	# Grandfather clock in the central parlor; the Brass Wrench is stashed
-	# in its lower compartment until the gear puzzle runs the pendulum.
+	# Grandfather clock in this run's chosen room; the Brass Wrench is
+	# stashed in its compartment until the gear puzzle runs the pendulum.
+	# Socket requirements are shuffled and their numerals re-engraved.
 	var clock := CLOCKWORK_SCENE.instantiate() as ClockworkMechanism
-	clock.position = get_room_center(CLOCK_CELL) + Vector3(-3.0, 0, 3.2)
+	clock.position = get_room_center(_clock_cell) + Vector3(-3.0, 0, 3.2)
 	clock.rotation.y = PI
 	_generated_root.add_child(clock)
+	var teeth_perm := [8, 12, 16]
+	for i in range(teeth_perm.size() - 1, 0, -1):
+		var j := _rng.randi_range(0, i)
+		var tmp: int = teeth_perm[i]
+		teeth_perm[i] = teeth_perm[j]
+		teeth_perm[j] = tmp
+	var numerals := {8: "VIII", 12: "XII", 16: "XVI"}
+	for i in clock._sockets.size():
+		var socket: GearSocket = clock._sockets[i]
+		socket.required_teeth = teeth_perm[i]
+		socket.display_name = "Gear Socket %s" % numerals[teeth_perm[i]]
+		socket.get_node("Numeral").text = numerals[teeth_perm[i]]
 	var wrench := BRASS_WRENCH_SCENE.instantiate() as Grabbable
 	clock.stash_item(wrench)
 
-	for spec in GEAR_SPECS:
-		_spawn_gear(spec[0], spec[1], spec[2], get_room_center(spec[3]) + Vector3(-1.8, 0.3, -4.2))
+	for i in GEAR_SPECS.size():
+		var spec: Array = GEAR_SPECS[i]
+		_spawn_gear(spec[0], spec[1], spec[2],
+			get_room_center(_gear_cells[i]) + Vector3(-1.8, 0.3, -4.2))
 
 	_build_pedestal(get_room_center(VAULT_STUDY_CELL))
 	var will := WILL_ITEM_SCENE.instantiate() as Node3D
@@ -458,7 +551,7 @@ func _spawn_props() -> void:
 			var center := get_room_center(cell)
 			var side := 3.5 if _rng.randf() < 0.5 else -3.5
 			_add_prop(center + Vector3(side, 1.1, -4.25), Vector3(1.8, 2.2, 0.45), _shelf_material)
-			if cell != CLOCK_CELL:  # keep the clock's corner clear
+			if cell != _clock_cell:  # keep the clock's corner clear
 				for spot in crate_spots:
 					if _rng.randf() < 0.6:
 						_add_prop(center + spot, Vector3(0.8, 0.8, 0.8), _crate_material)
@@ -564,7 +657,7 @@ func _spawn_interior_atmosphere() -> void:
 			# Swinging ceiling lamp (offset in the parlor so it clears the
 			# clock and mirror B) and drifting dust motes.
 			var lamp := SwingingLamp.new()
-			var lamp_offset := Vector3(1.8, 2.95, 1.8) if cell == CLOCK_CELL else Vector3(0, 2.95, 0)
+			var lamp_offset := Vector3(1.8, 2.95, 1.8) if cell == _clock_cell else Vector3(0, 2.95, 0)
 			lamp.position = center + lamp_offset
 			_generated_root.add_child(lamp)
 			_add_particles(center + Vector3(0, 1.6, 0), 20, Vector3(8, 2.4, 8),
@@ -577,8 +670,12 @@ func _spawn_interior_atmosphere() -> void:
 			_add_decor_box(center + Vector3(-inset, 0.075, 0), Vector3(0.06, 0.15, room_size - 0.5), _shelf_material)
 			_add_decor_box(center + Vector3(inset, 0.075, 0), Vector3(0.06, 0.15, room_size - 0.5), _shelf_material)
 
-	# Area rugs in the foyer and both parlors.
-	for cell: Vector2i in [FOYER_CELL, CLOCK_CELL, PARLOR_CELL]:
+	# Area rugs in the foyer and both parlors (deduped if they coincide).
+	var rug_cells: Array[Vector2i] = [FOYER_CELL]
+	for cell: Vector2i in [_clock_cell, PARLOR_CELL]:
+		if not cell in rug_cells:
+			rug_cells.append(cell)
+	for cell in rug_cells:
 		_add_decor_box(get_room_center(cell) + Vector3(0, 0.012, 0), Vector3(3.2, 0.02, 2.2), _rug_material)
 
 	# Fireplace in the north-east parlor: stone surround, glowing hearth,
