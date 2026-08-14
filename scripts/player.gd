@@ -29,9 +29,9 @@ var _action_anim := ""
 var _visual_base_pos := Vector3.ZERO
 var _gait_phase := 0.0
 var _adjusting_mirror: RotatingMirror = null
-var _mirror_adjusted := false
 var _mirror_sync_accum := 0.0
 var _step_accum := 0.9
+var _last_mouse_x := 0.0
 var _fade_walls: Array = []
 var _wall_blocking := {}
 var _fade_frame := 0
@@ -267,18 +267,8 @@ func _physics_process(delta: float) -> void:
 		velocity.y -= _gravity * delta
 
 	var input_dir := Vector2.ZERO if ui_locked else Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	# Holding [E] on a mirror captures [A]/[D] for swiveling instead of
-	# strafing; movement is suppressed until the hold is released.
+	# Mirror rotation mode: mouse movement swivels; check distance and exit.
 	if _adjusting_mirror:
-		var axis := Input.get_axis("move_left", "move_right")
-		if absf(axis) > 0.01:
-			_adjusting_mirror.adjust(axis, delta)
-			_mirror_adjusted = true
-			# Stream the live angle to the partner at 10 Hz.
-			_mirror_sync_accum += delta
-			if NetworkSession.multiplayer_active and _mirror_sync_accum >= 0.1:
-				_mirror_sync_accum = 0.0
-				_adjusting_mirror._net_set_angle.rpc(_adjusting_mirror.rotation.y)
 		if global_position.distance_to(_adjusting_mirror.global_position) > 3.5:
 			_finish_mirror_adjust()
 		input_dir = Vector2.ZERO
@@ -503,19 +493,30 @@ func _update_prompt() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_local_player() or ui_locked:
 		return
+	# Mirror rotation: mouse motion swivels; E or ESC exits.
+	if _adjusting_mirror:
+		if event is InputEventMouseMotion:
+			_adjusting_mirror.adjust_by_mouse(event.relative.x)
+			# Stream the live angle to the partner at 10 Hz.
+			_mirror_sync_accum += 0.016  # approximate delta
+			if NetworkSession.multiplayer_active and _mirror_sync_accum >= 0.1:
+				_mirror_sync_accum = 0.0
+				_adjusting_mirror._net_set_angle.rpc(_adjusting_mirror.rotation.y)
+		elif event.is_action_pressed("interact") or event.is_action_pressed("ui_cancel"):
+			_finish_mirror_adjust()
+			get_viewport().set_input_as_handled()
+		return
+
 	# [E] always interacts (valves, doors, mirrors work while carrying);
 	# [Q] is the dedicated drop key, so tools are never dropped by accident.
 	if event.is_action_pressed("interact"):
 		var target := get_nearest_interactable()
 		if target is RotatingMirror:
-			# Begin a hold-to-swivel; resolved on release.
+			# Enter mirror rotation mode.
 			_adjusting_mirror = target
-			_mirror_adjusted = false
+			_adjusting_mirror.start_rotating()
 		elif target:
 			request_interact(target)
-	elif event.is_action_released("interact"):
-		if _adjusting_mirror:
-			_finish_mirror_adjust()
 	elif event.is_action_pressed("drop"):
 		if NetworkSession.multiplayer_active:
 			_net_drop.rpc()
@@ -532,14 +533,11 @@ func _unhandled_input(event: InputEvent) -> void:
 func _finish_mirror_adjust() -> void:
 	if _adjusting_mirror == null:
 		return
-	if _mirror_adjusted:
-		_adjusting_mirror.end_adjust()
-		if NetworkSession.multiplayer_active:
-			_adjusting_mirror._net_finish_angle.rpc(_adjusting_mirror.rotation.y)
-	else:
-		request_interact(_adjusting_mirror)  # quick tap = 15° nudge
+	_adjusting_mirror.end_adjust()
+	if NetworkSession.multiplayer_active:
+		_adjusting_mirror._net_finish_angle.rpc(_adjusting_mirror.rotation.y)
 	_adjusting_mirror = null
-	_mirror_adjusted = false
+	_mirror_sync_accum = 0.0
 
 
 ## Route an interaction: in co-op it executes on EVERY peer via an RPC on

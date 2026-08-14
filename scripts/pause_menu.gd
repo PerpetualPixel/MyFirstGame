@@ -22,6 +22,7 @@ func _ready() -> void:
 	$Overlay/MenuCenter/Menu/RestartButton.pressed.connect(_on_restart)
 	$Overlay/MenuCenter/Menu/QuitButton.pressed.connect(func() -> void: get_tree().quit())
 	$Overlay/ControlsCenter/Panel/Lines/BackButton.pressed.connect(func() -> void: _show_controls(false))
+	$Overlay/ControlsCenter/Panel/Lines/HintsContainer/HintsToggle.toggled.connect(_on_hints_toggled)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -73,3 +74,7 @@ func _on_restart() -> void:
 	else:
 		get_tree().paused = false
 		get_tree().reload_current_scene()
+
+
+func _on_hints_toggled(pressed: bool) -> void:
+	GameSettings.hints_enabled = pressed

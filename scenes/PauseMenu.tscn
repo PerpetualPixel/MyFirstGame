@@ -67,7 +67,11 @@ text = "[W] [A] [S] [D]  —  Move Character"
 
 [node name="Interact" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
 theme_override_font_sizes/font_size = 20
-text = "[E]  —  Interact (valves, breaker, mirrors, doors)"
+text = "[E]  —  Interact (valves, breaker, doors) / Rotate Mirror"
+
+[node name="MirrorControl" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
+theme_override_font_sizes/font_size = 20
+text = "[Mouse]  —  Swivel Mirror while rotating"
 
 [node name="Drop" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
 theme_override_font_sizes/font_size = 20
@@ -80,6 +84,24 @@ text = "[ESC]  —  Pause / Close Minigame"
 [node name="Restart" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
 theme_override_font_sizes/font_size = 20
 text = "[R]  —  Quick Restart Run"
+
+[node name="HintsSpacer" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
+text = ""
+
+[node name="HintsTitle" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
+theme_override_font_sizes/font_size = 24
+text = "Settings"
+horizontal_alignment = 1
+
+[node name="HintsContainer" type="HBoxContainer" parent="Overlay/ControlsCenter/Panel/Lines"]
+alignment = 1
+
+[node name="HintsLabel" type="Label" parent="Overlay/ControlsCenter/Panel/Lines/HintsContainer"]
+theme_override_font_sizes/font_size = 20
+text = "Hints: "
+
+[node name="HintsToggle" type="CheckButton" parent="Overlay/ControlsCenter/Panel/Lines/HintsContainer"]
+button_pressed = true
 
 [node name="BackButton" type="Button" parent="Overlay/ControlsCenter/Panel/Lines"]
 custom_minimum_size = Vector2(0, 44)

@@ -1,13 +1,13 @@
 class_name RotatingMirror
 extends Interactable
 
-## Brass mirror on a pedestal with free-angle swivel. Hold [E] and press
-## [A]/[D] (driven by player.gd) to swivel smoothly with ratchet clicks;
-## release settles onto the nearest 15-degree detent. A quick [E] tap
-## nudges 15 degrees clockwise. The brass dial at the base reads the exact
+## Brass mirror on a pedestal with free-angle mouse-swivel. Press [E] to
+## enter rotation mode; move mouse left/right to swivel smoothly with
+## ratchet clicks every 7.5°; press [E] or [ESC] to exit and snap to
+## nearest 15-degree detent. The brass dial at the base reads the exact
 ## angle. Beams reflect off the live collision normal, so any angle works.
 
-@export var adjust_speed_degrees: float = 60.0
+@export var mouse_sensitivity: float = 0.5
 @export var snap_degrees: float = 15.0
 
 @onready var _beam: LaserBeam = $Beam
@@ -25,25 +25,22 @@ func _ready() -> void:
 
 
 func get_prompt(_by: Node3D = null) -> String:
-	return "[E] Hold + [A]/[D] Swivel Mirror"
+	var hint_suffix := "\n[Mouse] Swivel • [ESC] Exit" if GameSettings.hints_enabled else ""
+	return "[E] Rotate Mirror" + hint_suffix
 
 
-## Quick tap: one 15-degree clockwise detent.
-func interact(by: Node3D) -> void:
+## Start rotation mode: called by player when E is pressed on this mirror.
+func start_rotating() -> void:
 	if _tween and _tween.is_running():
 		_tween.kill()
-	_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	_tween.tween_property(self, "rotation:y", rotation.y - deg_to_rad(snap_degrees), 0.15)
-	AudioSynthesizer.play_at("ratchet", global_position, -8.0)
-	super.interact(by)
 
 
-## Smooth swivel while the player holds [E]; direction > 0 turns clockwise.
-func adjust(direction: float, delta: float) -> void:
+## Adjust mirror angle by mouse delta in pixels (typically delta.x from motion event).
+func adjust_by_mouse(delta_pixels: float) -> void:
 	if _tween and _tween.is_running():
 		_tween.kill()
-	var step := direction * deg_to_rad(adjust_speed_degrees) * delta
-	rotation.y -= step
+	var step := deg_to_rad(-delta_pixels * mouse_sensitivity * 0.01)
+	rotation.y += step
 	_ratchet_accum += absf(step)
 	if _ratchet_accum >= deg_to_rad(7.5):
 		_ratchet_accum = 0.0
