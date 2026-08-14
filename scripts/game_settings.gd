@@ -5,7 +5,7 @@ extends Node
 ## Accessed as GameSettings.hints_enabled, GameSettings.music_volume_db (static).
 
 static var hints_enabled := true
-static var music_volume_db := linear2db(0.3)  # 30% = -10.4 dB
+static var music_volume_db := -10.4  # 30% volume in dB
 
 
 func _ready() -> void:
