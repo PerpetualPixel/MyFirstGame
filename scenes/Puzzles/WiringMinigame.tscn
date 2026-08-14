@@ -1,0 +1,98 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/puzzles/wiring_minigame.gd" id="1_wiring"]
+
+[node name="WiringMinigame" type="CanvasLayer"]
+process_mode = 3
+layer = 10
+visible = false
+script = ExtResource("1_wiring")
+
+[node name="Overlay" type="Control" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Dim" type="ColorRect" parent="Overlay"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.65)
+
+[node name="PanelBg" type="ColorRect" parent="Overlay"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -430.0
+offset_top = -300.0
+offset_right = 430.0
+offset_bottom = 300.0
+color = Color(0.32, 0.25, 0.14, 1)
+
+[node name="Title" type="Label" parent="Overlay/PanelBg"]
+anchor_right = 1.0
+offset_top = 10.0
+offset_bottom = 50.0
+theme_override_font_sizes/font_size = 26
+text = "Breaker Box — Eight-Wire Fuse Panel"
+horizontal_alignment = 1
+
+[node name="Terminals" type="VBoxContainer" parent="Overlay/PanelBg"]
+offset_left = 36.0
+offset_top = 64.0
+offset_right = 186.0
+offset_bottom = 560.0
+theme_override_constants/separation = 12
+
+[node name="Ports" type="VBoxContainer" parent="Overlay/PanelBg"]
+offset_left = 320.0
+offset_top = 64.0
+offset_right = 470.0
+offset_bottom = 560.0
+theme_override_constants/separation = 12
+
+[node name="SchematicCard" type="ColorRect" parent="Overlay/PanelBg"]
+offset_left = 520.0
+offset_top = 56.0
+offset_right = 830.0
+offset_bottom = 520.0
+color = Color(0.8, 0.72, 0.55, 1)
+
+[node name="Schematic" type="Label" parent="Overlay/PanelBg/SchematicCard"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 8.0
+offset_right = -12.0
+offset_bottom = -8.0
+theme_override_colors/font_color = Color(0.18, 0.12, 0.06, 1)
+theme_override_font_sizes/font_size = 15
+text = "~ charred journal scrap ~"
+
+[node name="Hint" type="Label" parent="Overlay/PanelBg"]
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -40.0
+offset_bottom = -8.0
+theme_override_font_sizes/font_size = 16
+text = "Drag a wire to a prong. [ESC] steps away."
+horizontal_alignment = 1
+
+[node name="WireLayer" type="Control" parent="Overlay"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="Sparks" type="CPUParticles2D" parent="Overlay"]
+emitting = false
+amount = 48
+lifetime = 0.7
+one_shot = true
+explosiveness = 1.0
+spread = 180.0
+gravity = Vector2(0, 500)
+initial_velocity_min = 150.0
+initial_velocity_max = 420.0
+scale_amount_min = 2.0
+scale_amount_max = 4.0
+color = Color(1, 0.85, 0.35, 1)

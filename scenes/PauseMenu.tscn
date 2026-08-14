@@ -1,0 +1,86 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/pause_menu.gd" id="1_pause"]
+
+[node name="PauseMenu" type="CanvasLayer"]
+process_mode = 3
+layer = 20
+visible = false
+script = ExtResource("1_pause")
+
+[node name="Overlay" type="Control" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Dim" type="ColorRect" parent="Overlay"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.03, 0.025, 0.02, 0.7)
+
+[node name="MenuCenter" type="CenterContainer" parent="Overlay"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Menu" type="VBoxContainer" parent="Overlay/MenuCenter"]
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="Overlay/MenuCenter/Menu"]
+theme_override_font_sizes/font_size = 52
+text = "Paused"
+horizontal_alignment = 1
+
+[node name="ResumeButton" type="Button" parent="Overlay/MenuCenter/Menu"]
+custom_minimum_size = Vector2(280, 46)
+text = "Resume"
+
+[node name="ControlsButton" type="Button" parent="Overlay/MenuCenter/Menu"]
+custom_minimum_size = Vector2(280, 46)
+text = "Controls / Keybinds"
+
+[node name="RestartButton" type="Button" parent="Overlay/MenuCenter/Menu"]
+custom_minimum_size = Vector2(280, 46)
+text = "Restart Run"
+
+[node name="QuitButton" type="Button" parent="Overlay/MenuCenter/Menu"]
+custom_minimum_size = Vector2(280, 46)
+text = "Quit to Desktop"
+
+[node name="ControlsCenter" type="CenterContainer" parent="Overlay"]
+visible = false
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="Overlay/ControlsCenter"]
+
+[node name="Lines" type="VBoxContainer" parent="Overlay/ControlsCenter/Panel"]
+custom_minimum_size = Vector2(460, 0)
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
+theme_override_font_sizes/font_size = 34
+text = "Controls"
+horizontal_alignment = 1
+
+[node name="Move" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
+theme_override_font_sizes/font_size = 20
+text = "[W] [A] [S] [D]  —  Move Character"
+
+[node name="Interact" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
+theme_override_font_sizes/font_size = 20
+text = "[E]  —  Interact (valves, breaker, mirrors, doors)"
+
+[node name="Drop" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
+theme_override_font_sizes/font_size = 20
+text = "[Q]  —  Drop Carried Item"
+
+[node name="Esc" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
+theme_override_font_sizes/font_size = 20
+text = "[ESC]  —  Pause / Close Minigame"
+
+[node name="Restart" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
+theme_override_font_sizes/font_size = 20
+text = "[R]  —  Quick Restart Run"
+
+[node name="BackButton" type="Button" parent="Overlay/ControlsCenter/Panel/Lines"]
+custom_minimum_size = Vector2(0, 44)
+text = "Back"

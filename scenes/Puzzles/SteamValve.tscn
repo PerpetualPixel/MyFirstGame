@@ -1,0 +1,72 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scripts/puzzles/steam_valve.gd" id="1_valve"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_iron"]
+albedo_color = Color(0.28, 0.29, 0.32, 1)
+metallic = 0.6
+roughness = 0.5
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_brass"]
+albedo_color = Color(0.72, 0.55, 0.25, 1)
+metallic = 0.7
+roughness = 0.4
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_pipe"]
+material = SubResource("StandardMaterial3D_iron")
+top_radius = 0.12
+bottom_radius = 0.12
+height = 1.0
+
+[sub_resource type="TorusMesh" id="TorusMesh_wheel"]
+material = SubResource("StandardMaterial3D_brass")
+inner_radius = 0.16
+outer_radius = 0.3
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_pipe"]
+height = 1.0
+radius = 0.2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_steam"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.92, 0.94, 0.97, 0.3)
+
+[sub_resource type="SphereMesh" id="SphereMesh_puff"]
+material = SubResource("StandardMaterial3D_steam")
+radius = 0.06
+height = 0.12
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_steam"]
+direction = Vector3(1, 0.35, 0)
+spread = 12.0
+initial_velocity_min = 2.0
+initial_velocity_max = 3.5
+gravity = Vector3(0, 0.8, 0)
+scale_min = 0.4
+scale_max = 0.9
+
+[node name="SteamValve" type="StaticBody3D"]
+script = ExtResource("1_valve")
+display_name = "Steam Valve"
+prompt_action = "Turn Valve"
+prompt_height = 1.7
+
+[node name="Pipe" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+mesh = SubResource("CylinderMesh_pipe")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+shape = SubResource("CylinderShape3D_pipe")
+
+[node name="Wheel" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 0)
+mesh = SubResource("TorusMesh_wheel")
+
+[node name="Steam" type="GPUParticles3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.18, 0.8, 0)
+amount = 48
+lifetime = 0.7
+process_material = SubResource("ParticleProcessMaterial_steam")
+draw_pass_1 = SubResource("SphereMesh_puff")

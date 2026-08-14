@@ -1,0 +1,54 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/mansion_gen.gd" id="2_mansion"]
+[ext_resource type="PackedScene" path="res://scenes/Player.tscn" id="3_player"]
+[ext_resource type="PackedScene" path="res://scenes/BrassCog.tscn" id="4_cog"]
+[ext_resource type="PackedScene" path="res://scenes/HUD.tscn" id="5_hud"]
+[ext_resource type="Script" path="res://scripts/game_manager.gd" id="6_manager"]
+[ext_resource type="PackedScene" path="res://scenes/PauseMenu.tscn" id="7_pause"]
+[ext_resource type="Script" path="res://scripts/audio_synthesizer.gd" id="8_audio"]
+
+[sub_resource type="Environment" id="Environment_main"]
+background_mode = 1
+background_color = Color(0.05, 0.07, 0.14, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.65, 0.7, 0.9, 1)
+ambient_light_energy = 0.3
+fog_enabled = true
+fog_light_color = Color(0.35, 0.42, 0.6, 1)
+fog_density = 0.006
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.02
+volumetric_fog_albedo = Color(0.55, 0.62, 0.8, 1)
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="AudioSynthesizer" type="Node" parent="."]
+script = ExtResource("8_audio")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_main")
+
+[node name="MansionGenerator" type="Node3D" parent="."]
+script = ExtResource("2_mansion")
+
+[node name="Moonlight" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.707107, 0.541675, -0.454519, 0, 0.642788, 0.766044, 0.707107, 0.541675, -0.454519, 0, 14, 0)
+light_color = Color(0.72, 0.78, 1.0, 1)
+light_energy = 0.4
+shadow_enabled = true
+
+[node name="Player" parent="." instance=ExtResource("3_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
+
+[node name="BrassCog" parent="." instance=ExtResource("4_cog")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0.6, 10)
+
+[node name="HUD" parent="." instance=ExtResource("5_hud")]
+
+[node name="PauseMenu" parent="." instance=ExtResource("7_pause")]
+
+[node name="GameManager" type="Node" parent="."]
+script = ExtResource("6_manager")

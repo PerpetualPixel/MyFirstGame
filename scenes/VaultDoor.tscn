@@ -1,0 +1,48 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/vault_door.gd" id="1_door"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_gate"]
+albedo_color = Color(0.45, 0.35, 0.18, 1)
+metallic = 0.8
+roughness = 0.35
+
+[sub_resource type="BoxMesh" id="BoxMesh_slab"]
+material = SubResource("StandardMaterial3D_gate")
+size = Vector3(2, 1.1, 0.4)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_slab"]
+size = Vector3(2, 1.1, 0.4)
+
+[sub_resource type="SphereMesh" id="SphereMesh_lamp"]
+radius = 0.09
+height = 0.18
+
+[node name="VaultDoor" type="Node3D"]
+script = ExtResource("1_door")
+
+[node name="Gate" type="StaticBody3D" parent="."]
+
+[node name="LowerMesh" type="MeshInstance3D" parent="Gate"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0)
+mesh = SubResource("BoxMesh_slab")
+
+[node name="LowerCollision" type="CollisionShape3D" parent="Gate"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0)
+shape = SubResource("BoxShape3D_slab")
+
+[node name="UpperMesh" type="MeshInstance3D" parent="Gate"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.85, 0)
+mesh = SubResource("BoxMesh_slab")
+
+[node name="UpperCollision" type="CollisionShape3D" parent="Gate"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.85, 0)
+shape = SubResource("BoxShape3D_slab")
+
+[node name="LightLamp" type="MeshInstance3D" parent="Gate"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.45, 2.1, 0.26)
+mesh = SubResource("SphereMesh_lamp")
+
+[node name="SteamLamp" type="MeshInstance3D" parent="Gate"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.45, 2.1, 0.26)
+mesh = SubResource("SphereMesh_lamp")

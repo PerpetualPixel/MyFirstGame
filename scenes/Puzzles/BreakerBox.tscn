@@ -1,0 +1,41 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/puzzles/breaker_box.gd" id="1_breaker"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_iron"]
+albedo_color = Color(0.22, 0.24, 0.28, 1)
+metallic = 0.5
+roughness = 0.55
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_brass"]
+albedo_color = Color(0.72, 0.55, 0.25, 1)
+metallic = 0.7
+roughness = 0.4
+
+[sub_resource type="BoxMesh" id="BoxMesh_panel"]
+material = SubResource("StandardMaterial3D_iron")
+size = Vector3(1.0, 1.6, 0.25)
+
+[sub_resource type="BoxMesh" id="BoxMesh_trim"]
+material = SubResource("StandardMaterial3D_brass")
+size = Vector3(0.85, 0.1, 0.28)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_box"]
+size = Vector3(1.0, 1.6, 0.3)
+
+[node name="BreakerBox" type="StaticBody3D"]
+script = ExtResource("1_breaker")
+display_name = "Breaker Box"
+prompt_height = 2.2
+
+[node name="Panel" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0.05)
+mesh = SubResource("BoxMesh_panel")
+
+[node name="Trim" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.95, 0.05)
+mesh = SubResource("BoxMesh_trim")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0.05)
+shape = SubResource("BoxShape3D_box")

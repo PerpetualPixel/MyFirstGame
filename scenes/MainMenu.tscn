@@ -1,0 +1,226 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_menu"]
+[ext_resource type="Script" path="res://scripts/audio_synthesizer.gd" id="2_audio"]
+
+[sub_resource type="Environment" id="Environment_menu"]
+background_mode = 1
+background_color = Color(0.03, 0.045, 0.09, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.5, 0.58, 0.8, 1)
+ambient_light_energy = 0.25
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.03
+volumetric_fog_albedo = Color(0.5, 0.55, 0.75, 1)
+
+[node name="MainMenu" type="Node3D"]
+script = ExtResource("1_menu")
+
+[node name="AudioSynthesizer" type="Node" parent="."]
+script = ExtResource("2_audio")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_menu")
+
+[node name="CameraPivot" type="Node3D" parent="."]
+
+[node name="Camera3D" type="Camera3D" parent="CameraPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.3, 3.4)
+current = true
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Root" type="Control" parent="UI"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Title" type="Label" parent="UI/Root"]
+anchor_right = 1.0
+offset_top = 42.0
+offset_bottom = 116.0
+theme_override_colors/font_color = Color(0.9, 0.76, 0.45, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.7)
+theme_override_constants/shadow_offset_x = 3
+theme_override_constants/shadow_offset_y = 3
+theme_override_font_sizes/font_size = 52
+text = "THE ECCENTRIC INVENTOR'S WILL"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="UI/Root"]
+anchor_right = 1.0
+offset_top = 118.0
+offset_bottom = 150.0
+theme_override_colors/font_color = Color(0.75, 0.66, 0.5, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 20
+text = "A 4-Minute Co-op Puzzle Heist"
+horizontal_alignment = 1
+
+[node name="Buttons" type="VBoxContainer" parent="UI/Root"]
+offset_left = 60.0
+offset_top = 210.0
+offset_right = 380.0
+offset_bottom = 590.0
+theme_override_constants/separation = 16
+
+[node name="StartButton" type="Button" parent="UI/Root/Buttons"]
+custom_minimum_size = Vector2(320, 54)
+text = "Start Solo Run"
+
+[node name="HostButton" type="Button" parent="UI/Root/Buttons"]
+custom_minimum_size = Vector2(320, 54)
+text = "Host Co-op Lobby"
+
+[node name="JoinButton" type="Button" parent="UI/Root/Buttons"]
+custom_minimum_size = Vector2(320, 54)
+text = "Join Game"
+
+[node name="ControlsButton" type="Button" parent="UI/Root/Buttons"]
+custom_minimum_size = Vector2(320, 54)
+text = "Controls & Settings"
+
+[node name="QuitButton" type="Button" parent="UI/Root/Buttons"]
+custom_minimum_size = Vector2(320, 54)
+text = "Quit to Desktop"
+
+[node name="HostModal" type="Control" parent="UI/Root"]
+visible = false
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Dim" type="ColorRect" parent="UI/Root/HostModal"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.6)
+
+[node name="Center" type="CenterContainer" parent="UI/Root/HostModal"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="UI/Root/HostModal/Center"]
+
+[node name="VBox" type="VBoxContainer" parent="UI/Root/HostModal/Center/Panel"]
+custom_minimum_size = Vector2(460, 0)
+theme_override_constants/separation = 12
+
+[node name="TitleH" type="Label" parent="UI/Root/HostModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 30
+text = "Host Co-op Lobby (LAN)"
+horizontal_alignment = 1
+
+[node name="IPLabel" type="Label" parent="UI/Root/HostModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 20
+text = "Host address: ..."
+horizontal_alignment = 1
+
+[node name="PeersLabel" type="Label" parent="UI/Root/HostModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 20
+text = "Explorers in lobby: 1"
+horizontal_alignment = 1
+
+[node name="NoteH" type="Label" parent="UI/Root/HostModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 14
+text = "Co-op world sync is in development —
+the run starts locally for now."
+horizontal_alignment = 1
+
+[node name="StartRunButton" type="Button" parent="UI/Root/HostModal/Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 46)
+text = "Start Run"
+
+[node name="CloseHostButton" type="Button" parent="UI/Root/HostModal/Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 46)
+text = "Close Lobby"
+
+[node name="JoinModal" type="Control" parent="UI/Root"]
+visible = false
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Dim" type="ColorRect" parent="UI/Root/JoinModal"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.6)
+
+[node name="Center" type="CenterContainer" parent="UI/Root/JoinModal"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="UI/Root/JoinModal/Center"]
+
+[node name="VBox" type="VBoxContainer" parent="UI/Root/JoinModal/Center/Panel"]
+custom_minimum_size = Vector2(420, 0)
+theme_override_constants/separation = 12
+
+[node name="TitleJ" type="Label" parent="UI/Root/JoinModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 30
+text = "Join Game"
+horizontal_alignment = 1
+
+[node name="IPEdit" type="LineEdit" parent="UI/Root/JoinModal/Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 44)
+placeholder_text = "Host IP (e.g. 192.168.1.20)"
+
+[node name="ConnectButton" type="Button" parent="UI/Root/JoinModal/Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 46)
+text = "Connect"
+
+[node name="StatusLabel" type="Label" parent="UI/Root/JoinModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 16
+text = ""
+horizontal_alignment = 1
+
+[node name="CloseJoinButton" type="Button" parent="UI/Root/JoinModal/Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 46)
+text = "Back"
+
+[node name="ControlsModal" type="Control" parent="UI/Root"]
+visible = false
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Dim" type="ColorRect" parent="UI/Root/ControlsModal"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.6)
+
+[node name="Center" type="CenterContainer" parent="UI/Root/ControlsModal"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="UI/Root/ControlsModal/Center"]
+
+[node name="VBox" type="VBoxContainer" parent="UI/Root/ControlsModal/Center/Panel"]
+custom_minimum_size = Vector2(480, 0)
+theme_override_constants/separation = 10
+
+[node name="TitleC" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 30
+text = "Controls"
+horizontal_alignment = 1
+
+[node name="Move" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 18
+text = "[W] [A] [S] [D]  —  Move Character"
+
+[node name="Interact" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 18
+text = "[E]  —  Interact / Hold + [A][D] to swivel mirrors"
+
+[node name="Drop" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 18
+text = "[Q]  —  Drop Carried Item"
+
+[node name="Esc" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 18
+text = "[ESC]  —  Pause / Close Minigame"
+
+[node name="Restart" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 18
+text = "[R]  —  Quick Restart Run"
+
+[node name="CloseControlsButton" type="Button" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 46)
+text = "Back"
