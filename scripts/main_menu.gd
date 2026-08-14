@@ -62,7 +62,7 @@ func _process(delta: float) -> void:
 	if _fireplace_light:
 		_fire_flicker_time += delta
 		var flicker := sin(_fire_flicker_time * 3.2) * 0.15 + sin(_fire_flicker_time * 1.1 + 10.0) * 0.1
-		_fireplace_light.light_energy = clampf(2.0 + flicker + randf_range(-0.2, 0.2), 1.2, 2.8)
+		_fireplace_light.light_energy = clampf(1.8 + flicker + randf_range(-0.15, 0.15), 1.4, 2.3)
 		_fireplace_light.position.x = randf_range(-0.1, 0.1)
 
 
@@ -99,47 +99,66 @@ func _build_fireplace() -> void:
 	opening_right.material = _mat(Color(0.2, 0.15, 0.1), 0.05, 0.9)
 	add_child(opening_right)
 
+	# Dark firebox backing panel so flames read as contained in the hearth
+	var firebox := CSGBox3D.new()
+	firebox.size = Vector3(2.4, 1.6, 0.2)
+	firebox.position = Vector3(0, 0.95, -3.3)
+	firebox.material = _mat(Color(0.05, 0.04, 0.035), 0.0, 1.0)
+	add_child(firebox)
+
+	# Fireplace lintel closing the top of the opening
+	var lintel := CSGBox3D.new()
+	lintel.size = Vector3(2.75, 0.2, 0.5)
+	lintel.position = Vector3(0, 1.85, -2.8)
+	lintel.material = _mat(Color(0.2, 0.15, 0.1), 0.05, 0.9)
+	add_child(lintel)
+
 	# Dynamic fireplace light with shadows and warm color
 	_fireplace_light = OmniLight3D.new()
 	_fireplace_light.light_color = Color(1.0, 0.62, 0.3)  # Warm orange/amber
-	_fireplace_light.light_energy = 2.0
-	_fireplace_light.omni_range = 6.5
+	_fireplace_light.light_energy = 1.8
+	_fireplace_light.omni_range = 5.0
 	_fireplace_light.shadow_enabled = true
-	_fireplace_light.shadow_blur = 2.5
-	_fireplace_light.position = Vector3(0, 1.2, -2.5)
+	_fireplace_light.shadow_blur = 1.5
+	_fireplace_light.position = Vector3(0, 0.7, -2.6)
 	add_child(_fireplace_light)
 
-	# Fire particles: stylized flames rising from fireplace
+	# Fire particles: small, stylized flames rising from fireplace
 	var fire_particles := GPUParticles3D.new()
-	fire_particles.amount = 64
-	fire_particles.lifetime = 2.2
-	fire_particles.position = Vector3(0, 0.8, -2.8)
+	fire_particles.amount = 36
+	fire_particles.lifetime = 0.8
+	fire_particles.position = Vector3(0, 0.3, -3.0)
+	fire_particles.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 	var fire_mat := ParticleProcessMaterial.new()
 	fire_mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	fire_mat.emission_box_extents = Vector3(0.8, 0.3, 0.4)
+	fire_mat.emission_box_extents = Vector3(0.6, 0.1, 0.15)
 	fire_mat.direction = Vector3(0, 1, 0)
-	fire_mat.spread = 35.0
-	fire_mat.initial_velocity_min = 1.2
-	fire_mat.initial_velocity_max = 2.8
-	fire_mat.gravity = Vector3(0, -0.5, 0)
-	fire_mat.scale_min = 0.6
-	fire_mat.scale_max = 1.6
-	var fade_curve := CurveTexture.new()
-	fade_curve.curve = _get_fire_fade_curve()
-	fire_mat.scale_curve = fade_curve
+	fire_mat.spread = 32.0
+	fire_mat.initial_velocity_min = 0.9
+	fire_mat.initial_velocity_max = 1.5
+	fire_mat.gravity = Vector3(0, -0.2, 0)
+	fire_mat.scale_min = 0.15
+	fire_mat.scale_max = 0.35
+	var scale_fade := CurveTexture.new()
+	scale_fade.curve = _get_scale_fade_curve()
+	fire_mat.scale_curve = scale_fade
+	fire_mat.color_ramp = _get_fire_color_gradient()
 	fire_particles.process_material = fire_mat
 
-	# Fire mesh: soft quad with orange-yellow gradient
+	# Fire mesh: small quad unshaded for particle render
 	var fire_mesh := QuadMesh.new()
-	fire_mesh.size = Vector2(1.0, 1.5)
+	fire_mesh.size = Vector2(0.5, 0.8)
 	var fire_material := StandardMaterial3D.new()
 	fire_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fire_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	fire_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	fire_material.albedo_color = Color(1.0, 0.85, 0.4, 0.8)
+	fire_material.albedo_color = Color(1.0, 1.0, 1.0, 1.0)
 	fire_material.emission_enabled = true
-	fire_material.emission = Color(1.0, 0.6, 0.2)
-	fire_material.emission_energy_multiplier = 2.0
+	fire_material.emission = Color(1.0, 0.7, 0.3)
+	fire_material.emission_energy_multiplier = 3.0
+	fire_material.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	fire_material.billboard_keep_scale = true
 	fire_mesh.material = fire_material
 	fire_particles.draw_pass_1 = fire_mesh
 	add_child(fire_particles)
@@ -158,12 +177,23 @@ func _build_fireplace() -> void:
 		add_child(fire_audio)
 
 
-func _get_fire_fade_curve() -> Curve:
+func _get_scale_fade_curve() -> Curve:
 	var curve := Curve.new()
 	curve.add_point(Vector2(0.0, 1.0))
-	curve.add_point(Vector2(0.5, 0.8))
+	curve.add_point(Vector2(0.4, 0.75))
 	curve.add_point(Vector2(1.0, 0.0))
 	return curve
+
+
+func _get_fire_color_gradient() -> GradientTexture1D:
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(1.0, 0.95, 0.7, 1.0))   # bright yellow-white at spawn
+	gradient.set_color(1, Color(0.45, 0.08, 0.03, 0.0)) # dark ember, fully faded
+	gradient.add_point(0.35, Color(1.0, 0.55, 0.12, 0.9))  # vibrant orange
+	gradient.add_point(0.7, Color(0.7, 0.2, 0.05, 0.5))    # reddish ember
+	var tex := GradientTexture1D.new()
+	tex.gradient = gradient
+	return tex
 
 
 func _start_solo() -> void:
