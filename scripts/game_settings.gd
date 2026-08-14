@@ -1,10 +1,11 @@
 class_name GameSettings
 extends Node
 
-## Global game settings persisted across runs (hints toggle, etc).
-## Accessed as GameSettings.hints_enabled (static convenience).
+## Global game settings persisted across runs (hints toggle, music volume, etc).
+## Accessed as GameSettings.hints_enabled, GameSettings.music_volume_db (static).
 
 static var hints_enabled := true
+static var music_volume_db := linear2db(0.3)  # 30% = -10.4 dB
 
 
 func _ready() -> void:

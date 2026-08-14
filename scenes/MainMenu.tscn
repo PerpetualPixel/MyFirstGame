@@ -26,6 +26,9 @@ script = ExtResource("1_menu")
 [node name="AudioSynthesizer" type="Node" parent="."]
 script = ExtResource("2_audio")
 
+[node name="MusicPlayer" type="AudioStreamPlayer" parent="."]
+bus = &"Master"
+
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_menu")
 
@@ -123,7 +126,11 @@ text = "[W] [A] [S] [D]  —  Move Character"
 
 [node name="Interact" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18
-text = "[E]  —  Interact / Hold + [A][D] to swivel mirrors"
+text = "[E]  —  Interact / Rotate Mirror"
+
+[node name="MirrorControl" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 18
+text = "[Mouse]  —  Swivel Mirror (when rotating)"
 
 [node name="Drop" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18
@@ -144,3 +151,25 @@ text = "[R]  —  Quick Restart Run"
 [node name="CloseControlsButton" type="Button" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
 custom_minimum_size = Vector2(0, 46)
 text = "Back"
+
+[node name="MusicVolumeContainer" type="HBoxContainer" parent="UI/Root"]
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -320.0
+offset_top = -60.0
+offset_right = -20.0
+offset_bottom = -20.0
+theme_override_constants/separation = 12
+
+[node name="MusicLabel" type="Label" parent="UI/Root/MusicVolumeContainer"]
+text = "Music:"
+theme_override_font_sizes/font_size = 16
+
+[node name="MusicVolumeSlider" type="HSlider" parent="UI/Root/MusicVolumeContainer"]
+custom_minimum_size = Vector2(180, 0)
+value = 30.0
+min_value = 0.0
+max_value = 100.0
+step = 5.0

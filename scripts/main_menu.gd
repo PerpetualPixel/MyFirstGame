@@ -11,9 +11,12 @@ const LOBBY_SCENE := "res://scenes/Lobby.tscn"
 @onready var _pivot: Node3D = $CameraPivot
 @onready var _camera: Camera3D = $CameraPivot/Camera3D
 @onready var _controls_modal: Control = $UI/Root/ControlsModal
+@onready var _music_player: AudioStreamPlayer = $MusicPlayer
+@onready var _music_slider: HSlider = $UI/Root/MusicVolumeSlider
 
 var _gears: Array[MeshInstance3D] = []
 var _orbit_time := 0.0
+var _music_stream: AudioStream
 
 
 func _ready() -> void:
@@ -32,6 +35,18 @@ func _ready() -> void:
 	$UI/Root/ControlsModal/Center/Panel/VBox/CloseControlsButton.pressed.connect(
 		func() -> void: _controls_modal.visible = false)
 
+	# Music volume slider
+	_music_slider.value = 30.0  # 30% default
+	_music_slider.value_changed.connect(_on_music_volume_changed)
+
+	# Load and play menu music on loop
+	_music_stream = load("res://assets/music/MainMenu.mp3")
+	if _music_stream:
+		_music_player.stream = _music_stream
+		_music_player.bus = "Master"
+		_music_player.volume_db = GameSettings.music_volume_db
+		_music_player.play()
+
 	# Ambience: warm jazz-like ambient tone + fire crackle for cozy fireplace feel.
 	AudioSynthesizer.create_ui_loop("jazz_ambient", -16.0)
 	AudioSynthesizer.create_ui_loop("fire_crackle", -24.0)
@@ -44,6 +59,12 @@ func _process(delta: float) -> void:
 	_camera.look_at(Vector3(0, 1.0, 0))
 	for gear in _gears:
 		gear.rotate_object_local(Vector3.UP, delta * 0.8)
+
+
+func _on_music_volume_changed(value: float) -> void:
+	GameSettings.music_volume_db = linear2db(value / 100.0)
+	if _music_player:
+		_music_player.volume_db = GameSettings.music_volume_db
 
 
 func _start_solo() -> void:
