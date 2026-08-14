@@ -21,7 +21,7 @@ const CANDLE_POS := Vector2(756, 349)    # candle cluster on the desk
 @onready var _controls_modal: Control = $UI/ControlsModal
 @onready var _music_player: AudioStreamPlayer = $MusicPlayer
 @onready var _fire_crackle: AudioStreamPlayer = $FireCrackle
-@onready var _music_slider: HSlider = $UI/MusicVolumeContainer/MusicVolumeSlider
+@onready var _music_slider: HSlider = $UI/ControlsModal/Center/Panel/VBox/MusicRow/MusicVolumeSlider
 
 var _fire_light: PointLight2D
 var _candle_light: PointLight2D
@@ -46,8 +46,9 @@ func _ready() -> void:
 	$UI/ControlsModal/Center/Panel/VBox/CloseControlsButton.pressed.connect(
 		func() -> void: _controls_modal.visible = false)
 
-	# Music volume slider
-	_music_slider.value = 30.0  # 30% default
+	# Music volume slider (in the Controls & Settings modal), backed by
+	# the GameSettings autoload so the choice carries into gameplay.
+	_music_slider.value = db_to_linear(GameSettings.music_volume_db) * 100.0
 	_music_slider.value_changed.connect(_on_music_volume_changed)
 
 	# Load and play menu music on loop
@@ -55,7 +56,7 @@ func _ready() -> void:
 	if _music_stream:
 		_music_player.stream = _music_stream
 		_music_player.bus = "Master"
-		_music_player.volume_db = linear_to_db(0.3)
+		_music_player.volume_db = GameSettings.music_volume_db
 		_music_player.play()
 
 	# Fire crackle autoplays from the scene; make sure the MP3 loops.
@@ -76,7 +77,9 @@ func _process(delta: float) -> void:
 
 
 func _on_music_volume_changed(value: float) -> void:
-	var volume_db := linear_to_db(value / 100.0)
+	# -80 dB is effectively silent; avoids linear_to_db(0) = -inf.
+	var volume_db := linear_to_db(value / 100.0) if value > 0.0 else -80.0
+	GameSettings.music_volume_db = volume_db
 	if _music_player:
 		_music_player.volume_db = volume_db
 
@@ -125,11 +128,11 @@ func _build_fire_effects() -> void:
 
 	var ember_mat := ParticleProcessMaterial.new()
 	ember_mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	ember_mat.emission_box_extents = Vector3(50, 6, 1)
+	ember_mat.emission_box_extents = Vector3(26, 4, 1)
 	ember_mat.direction = Vector3(0, -1, 0)
-	ember_mat.spread = 12.0
-	ember_mat.initial_velocity_min = 26.0
-	ember_mat.initial_velocity_max = 60.0
+	ember_mat.spread = 7.0
+	ember_mat.initial_velocity_min = 22.0
+	ember_mat.initial_velocity_max = 48.0
 	ember_mat.gravity = Vector3(0, -26, 0)  # embers accelerate gently upward
 	ember_mat.scale_min = 0.15
 	ember_mat.scale_max = 0.35

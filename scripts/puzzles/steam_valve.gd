@@ -21,7 +21,6 @@ var activated := false
 var locked_open := false
 
 var _decay_timer: Timer
-var _steam_audio: AudioStreamPlayer3D
 
 
 func _ready() -> void:
@@ -30,8 +29,6 @@ func _ready() -> void:
 	_decay_timer.one_shot = true
 	_decay_timer.timeout.connect(_on_decay_timeout)
 	add_child(_decay_timer)
-	# Whistling pressure leak that subsides once the valve is tightened.
-	_steam_audio = AudioSynthesizer.create_loop("steam", self, -8.0)
 
 
 func can_interact(_by: Node3D) -> bool:
@@ -56,8 +53,6 @@ func interact(by: Node3D) -> void:
 
 func _finish() -> void:
 	_steam.emitting = false
-	if _steam_audio:
-		create_tween().tween_property(_steam_audio, "volume_db", -50.0, 1.2)
 	valve_activated.emit()
 	_sync_group()
 
@@ -104,9 +99,6 @@ func _apply_reset() -> void:
 		return
 	activated = false
 	_steam.emitting = true
-	if _steam_audio:
-		_steam_audio.volume_db = -4.0  # loud release hiss, settling back
-		create_tween().tween_property(_steam_audio, "volume_db", -8.0, 1.5)
 	Player.shake(0.7, global_position)  # violent blow-back thud
 	valve_reset.emit()
 

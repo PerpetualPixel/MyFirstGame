@@ -23,6 +23,10 @@ func _ready() -> void:
 	$Overlay/MenuCenter/Menu/QuitButton.pressed.connect(func() -> void: get_tree().quit())
 	$Overlay/ControlsCenter/Panel/Lines/BackButton.pressed.connect(func() -> void: _show_controls(false))
 	$Overlay/ControlsCenter/Panel/Lines/HintsContainer/HintsToggle.toggled.connect(_on_hints_toggled)
+	var scale_slider: HSlider = $Overlay/ControlsCenter/Panel/Lines/ObjScaleContainer/ObjScaleSlider
+	scale_slider.value = GameSettings.objectives_scale * 100.0
+	scale_slider.value_changed.connect(
+		func(value: float) -> void: GameSettings.objectives_scale = value / 100.0)
 
 
 func _unhandled_input(event: InputEvent) -> void:

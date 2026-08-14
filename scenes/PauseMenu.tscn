@@ -103,6 +103,22 @@ text = "Hints: "
 [node name="HintsToggle" type="CheckButton" parent="Overlay/ControlsCenter/Panel/Lines/HintsContainer"]
 button_pressed = true
 
+[node name="ObjScaleContainer" type="HBoxContainer" parent="Overlay/ControlsCenter/Panel/Lines"]
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="ObjScaleLabel" type="Label" parent="Overlay/ControlsCenter/Panel/Lines/ObjScaleContainer"]
+theme_override_font_sizes/font_size = 20
+text = "Objectives Size: "
+
+[node name="ObjScaleSlider" type="HSlider" parent="Overlay/ControlsCenter/Panel/Lines/ObjScaleContainer"]
+custom_minimum_size = Vector2(160, 0)
+size_flags_vertical = 4
+min_value = 60.0
+max_value = 160.0
+step = 10.0
+value = 100.0
+
 [node name="BackButton" type="Button" parent="Overlay/ControlsCenter/Panel/Lines"]
 custom_minimum_size = Vector2(0, 44)
 text = "Back"

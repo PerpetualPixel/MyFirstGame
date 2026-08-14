@@ -117,28 +117,22 @@ text = "[ESC]  —  Pause / Close Minigame"
 theme_override_font_sizes/font_size = 18
 text = "[R]  —  Quick Restart Run"
 
-[node name="CloseControlsButton" type="Button" parent="UI/ControlsModal/Center/Panel/VBox"]
-custom_minimum_size = Vector2(0, 46)
-text = "Back"
-
-[node name="MusicVolumeContainer" type="HBoxContainer" parent="UI"]
-anchor_left = 1.0
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -320.0
-offset_top = -60.0
-offset_right = -20.0
-offset_bottom = -20.0
+[node name="MusicRow" type="HBoxContainer" parent="UI/ControlsModal/Center/Panel/VBox"]
 theme_override_constants/separation = 12
 
-[node name="MusicLabel" type="Label" parent="UI/MusicVolumeContainer"]
-text = "Music:"
-theme_override_font_sizes/font_size = 16
+[node name="MusicLabel" type="Label" parent="UI/ControlsModal/Center/Panel/VBox/MusicRow"]
+theme_override_font_sizes/font_size = 18
+text = "Music Volume:"
 
-[node name="MusicVolumeSlider" type="HSlider" parent="UI/MusicVolumeContainer"]
+[node name="MusicVolumeSlider" type="HSlider" parent="UI/ControlsModal/Center/Panel/VBox/MusicRow"]
 custom_minimum_size = Vector2(180, 0)
+size_flags_horizontal = 3
+size_flags_vertical = 4
 value = 30.0
 min_value = 0.0
 max_value = 100.0
 step = 5.0
+
+[node name="CloseControlsButton" type="Button" parent="UI/ControlsModal/Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 46)
+text = "Back"
