@@ -15,7 +15,9 @@ var _streams := {}
 
 func _ready() -> void:
 	instance = self
+	_setup_reverb_bus()
 	_streams["plug"] = _gen_plug()
+	_streams["heartbeat"] = _gen_heartbeat()
 	_streams["ratchet"] = _gen_ratchet()
 	_streams["tick"] = _gen_tick()
 	_streams["chime"] = _gen_chime()
@@ -30,6 +32,23 @@ func _exit_tree() -> void:
 		instance = null
 
 
+## One shared "MansionReverb" bus: subtle room reverb so hisses, ticks,
+## and footsteps resonate down the hallways. Created once per process.
+static func _setup_reverb_bus() -> void:
+	if AudioServer.get_bus_index("MansionReverb") != -1:
+		return
+	var idx := AudioServer.bus_count
+	AudioServer.add_bus(idx)
+	AudioServer.set_bus_name(idx, "MansionReverb")
+	AudioServer.set_bus_send(idx, "Master")
+	var reverb := AudioEffectReverb.new()
+	reverb.room_size = 0.7
+	reverb.damping = 0.6
+	reverb.wet = 0.14
+	reverb.dry = 0.9
+	AudioServer.add_bus_effect(idx, reverb)
+
+
 ## Positional one-shot; the temporary player frees itself when done.
 static func play_at(sound: String, pos: Vector3, volume_db := 0.0, pitch := 1.0) -> void:
 	if instance == null or not instance._streams.has(sound):
@@ -38,6 +57,7 @@ static func play_at(sound: String, pos: Vector3, volume_db := 0.0, pitch := 1.0)
 	p.stream = instance._streams[sound]
 	p.volume_db = volume_db
 	p.pitch_scale = pitch * randf_range(0.94, 1.06)
+	p.bus = "MansionReverb"
 	instance.add_child(p)
 	p.global_position = pos
 	p.play()
@@ -80,6 +100,7 @@ static func create_loop(sound: String, parent: Node3D, volume_db := 0.0) -> Audi
 	p.stream = instance._streams[sound]
 	p.volume_db = volume_db
 	p.autoplay = true
+	p.bus = "MansionReverb"
 	parent.add_child(p)
 	return p
 
@@ -173,6 +194,21 @@ static func _gen_steam() -> AudioStreamWAV:
 		var wobble := 0.75 + 0.25 * sin(TAU * t / 1.4 * 2.0)  # loop-aligned
 		s[i] = lp * wobble * 0.75
 	return _make_wav(s, true)
+
+
+## Sub-bass heartbeat thump for the countdown tension layer.
+static func _gen_heartbeat() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 0.3)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var thump := sin(TAU * 52.0 * t) * exp(-t * 22.0)
+		var second := 0.0
+		if t > 0.12:
+			second = sin(TAU * 48.0 * (t - 0.12)) * exp(-(t - 0.12) * 26.0) * 0.6
+		s[i] = (thump + second) * 0.9
+	return _make_wav(s)
 
 
 ## Distant wind with faint rain patter: looping, heavily low-passed noise

@@ -110,6 +110,10 @@ var _decoy_cell := Vector2i(2, 1)
 @export_range(0.0, 1.0) var extra_door_chance: float = 0.35
 ## 0 = new random layout every run; any other value reproduces a fixed layout.
 @export var rng_seed: int = 0
+## Explicit seed with top priority (co-op: the host rolls one and RPCs it
+## to every peer via the lobby, so all machines generate identical layouts
+## — rooms, doors, props, and puzzle placement included).
+@export var generation_seed: int = 0
 
 var _rng := RandomNumberGenerator.new()
 var _doors: Dictionary = {}
@@ -153,9 +157,15 @@ func generate() -> void:
 	_generated_root = Node3D.new()
 	_generated_root.name = "Generated"
 	add_child(_generated_root)
+	_door_counter = 0
 
-	if rng_seed != 0:
-		_rng.seed = rng_seed
+	var chosen_seed := generation_seed
+	if chosen_seed == 0:
+		chosen_seed = NetworkSession.run_seed
+	if chosen_seed == 0:
+		chosen_seed = rng_seed
+	if chosen_seed != 0:
+		_rng.seed = chosen_seed
 	else:
 		_rng.randomize()
 
@@ -385,20 +395,26 @@ func _add_corner_posts(parent: Node3D) -> void:
 
 
 func _spawn_puzzle() -> void:
+	# NOTE: interactive nodes get deterministic names so RPC node paths
+	# resolve identically on every co-op peer.
 	var emitter := LIGHT_EMITTER_SCENE.instantiate() as Node3D
+	emitter.name = "Emitter"
 	emitter.position = active_route["emitter"]
 	_generated_root.add_child(emitter)
 
 	# Route mirrors at free random 15-degree detents (closed doors block
 	# the beam anyway, so no spawn can pre-solve the circuit).
-	for spot in active_route["mirrors"]:
+	var mirror_spots: Array = active_route["mirrors"]
+	for i in mirror_spots.size():
 		var mirror := ROTATING_MIRROR_SCENE.instantiate() as Node3D
-		mirror.position = spot
+		mirror.name = "Mirror_%d" % i
+		mirror.position = mirror_spots[i]
 		mirror.rotation.y = deg_to_rad(15.0 * float(_rng.randi_range(0, 23)))
 		_generated_root.add_child(mirror)
 
 	# Decoy mirror: interactable, reflective, entirely useless.
 	var decoy := ROTATING_MIRROR_SCENE.instantiate() as Node3D
+	decoy.name = "Mirror_Decoy"
 	decoy.position = get_room_center(_decoy_cell)
 	decoy.rotation.y = deg_to_rad(15.0 * float(_rng.randi_range(0, 23)))
 	_generated_root.add_child(decoy)
@@ -409,19 +425,22 @@ func _spawn_puzzle() -> void:
 	_add_prop(Vector3(2.0, 1.5, -2.0), Vector3(2.2, 3, 0.5), _shelf_material)
 
 	var receiver := LIGHT_RECEIVER_SCENE.instantiate() as Node3D
+	receiver.name = "Receiver"
 	receiver.position = get_room_center(VAULT_STUDY_CELL) + Vector3(0, 0, 3.0)
 	_generated_root.add_child(receiver)
 	receiver.puzzle_completed.connect(func() -> void: puzzle_solved.emit())
 
 	var door := VAULT_DOOR_SCENE.instantiate() as VaultDoor
+	door.name = "VaultGate"
 	door.position = (get_room_center(Vector2i(1, 1)) + get_room_center(VAULT_STUDY_CELL)) / 2.0
 	_generated_root.add_child(door)
 	receiver.puzzle_completed.connect(door.on_light_puzzle_completed)
 
 	door.valves_required = _valve_cells.size()
-	for cell in _valve_cells:
+	for i in _valve_cells.size():
 		var valve := STEAM_VALVE_SCENE.instantiate() as SteamValve
-		valve.position = get_room_center(cell) + Vector3(2.0, 0, 2.0)
+		valve.name = "Valve_%d" % i
+		valve.position = get_room_center(_valve_cells[i]) + Vector3(2.0, 0, 2.0)
 		_generated_root.add_child(valve)
 		valve.valve_activated.connect(door.on_valve_activated)
 		valve.valve_reset.connect(door.on_valve_reset)
@@ -430,6 +449,7 @@ func _spawn_puzzle() -> void:
 	# stashed in its compartment until the gear puzzle runs the pendulum.
 	# Socket requirements are shuffled and their numerals re-engraved.
 	var clock := CLOCKWORK_SCENE.instantiate() as ClockworkMechanism
+	clock.name = "Clock"
 	clock.position = get_room_center(_clock_cell) + Vector3(-3.0, 0, 3.2)
 	clock.rotation.y = PI
 	_generated_root.add_child(clock)
@@ -446,23 +466,26 @@ func _spawn_puzzle() -> void:
 		socket.display_name = "Gear Socket %s" % numerals[teeth_perm[i]]
 		socket.get_node("Numeral").text = numerals[teeth_perm[i]]
 	var wrench := BRASS_WRENCH_SCENE.instantiate() as Grabbable
+	wrench.name = "Wrench"
 	clock.stash_item(wrench)
 
 	for i in GEAR_SPECS.size():
 		var spec: Array = GEAR_SPECS[i]
 		_spawn_gear(spec[0], spec[1], spec[2],
-			get_room_center(_gear_cells[i]) + Vector3(-1.8, 0.3, -4.2))
+			get_room_center(_gear_cells[i]) + Vector3(-1.8, 0.3, -4.2), "Gear_%d" % i)
 
 	_build_pedestal(get_room_center(VAULT_STUDY_CELL))
 	var will := WILL_ITEM_SCENE.instantiate() as Node3D
+	will.name = "Will"
 	will.position = get_room_center(VAULT_STUDY_CELL) + Vector3(0, 1.05, 0)
 	_generated_root.add_child(will)
 
 	_build_exit_zone()
 
 
-func _spawn_gear(teeth: int, label: String, radius: float, at: Vector3) -> void:
+func _spawn_gear(teeth: int, label: String, radius: float, at: Vector3, node_name: String) -> void:
 	var gear := BRASS_GEAR_SCENE.instantiate() as Grabbable
+	gear.name = node_name
 	gear.display_name = label
 	gear.set_meta("teeth", teeth)
 	gear.position = at
@@ -497,8 +520,13 @@ func _spawn_doors() -> void:
 				_add_door_frame(center + Vector3(0, 0, room_size / 2.0), 0.0)
 
 
+var _door_counter := 0
+
+
 func _spawn_hinged_door(at: Vector3, yaw: float, locked := false, width := 2.0) -> Door:
 	var door := DOOR_SCENE.instantiate() as Door
+	door.name = "Door_%d" % _door_counter
+	_door_counter += 1
 	door.position = at
 	door.rotation.y = yaw
 	door.locked = locked
@@ -524,6 +552,9 @@ func _spawn_entrance() -> void:
 	_add_door_frame(Vector3(0, 0, front_z), 0.0)
 
 	var breaker := BREAKER_BOX_SCENE.instantiate() as BreakerBox
+	breaker.name = "Breaker"
+	# Seeded wiring: identical mapping and journal clues on every peer.
+	breaker.wiring_seed = _rng.randi()
 	breaker.position = Vector3(3.5, 0, front_z + 0.16)
 	_generated_root.add_child(breaker)
 	breaker.powered.connect(left.unlock_and_open)

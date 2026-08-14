@@ -1,0 +1,53 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/lobby.gd" id="1_lobby"]
+
+[node name="Lobby" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_lobby")
+
+[node name="Bg" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.04, 0.05, 0.09, 1)
+
+[node name="Center" type="CenterContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+
+[node name="VBox" type="VBoxContainer" parent="Center/Panel"]
+custom_minimum_size = Vector2(480, 0)
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 34
+text = "Co-op Expedition Lobby"
+horizontal_alignment = 1
+
+[node name="Status" type="Label" parent="Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 18
+text = "Host a lobby or join a partner's."
+horizontal_alignment = 1
+
+[node name="IPEdit" type="LineEdit" parent="Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 44)
+text = "127.0.0.1:8910"
+
+[node name="HostButton" type="Button" parent="Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 48)
+text = "Host Game"
+
+[node name="JoinButton" type="Button" parent="Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 48)
+text = "Join Game"
+
+[node name="StartButton" type="Button" parent="Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 48)
+text = "Start Game"
+
+[node name="BackButton" type="Button" parent="Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 44)
+text = "Back to Menu"

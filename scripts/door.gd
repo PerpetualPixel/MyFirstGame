@@ -91,7 +91,43 @@ func set_open(open: bool) -> void:
 	_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_tween.tween_property(self, "rotation:y", target, swing_time)
 	AudioSynthesizer.play_at("tick", global_position, -6.0, 0.7)  # crisp latch click
+	Player.shake(0.12, global_position)
+	_dust_puff(global_position + global_transform.basis.x * (panel_width / 2.0), 10)
 	door_toggled.emit(open)
+
+
+## Soft dust puff at floor level (also used by the vault gate).
+static func _dust_puff(at: Vector3, amount: int) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null or tree.current_scene == null:
+		return
+	var puff := GPUParticles3D.new()
+	puff.amount = amount
+	puff.lifetime = 0.9
+	puff.one_shot = true
+	puff.explosiveness = 1.0
+	var mat := ParticleProcessMaterial.new()
+	mat.direction = Vector3(0, 1, 0)
+	mat.spread = 80.0
+	mat.initial_velocity_min = 0.4
+	mat.initial_velocity_max = 1.1
+	mat.gravity = Vector3(0, -0.6, 0)
+	mat.scale_min = 0.6
+	mat.scale_max = 1.4
+	puff.process_material = mat
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.06
+	mesh.height = 0.12
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(0.85, 0.82, 0.75, 0.4)
+	mesh.material = m
+	puff.draw_pass_1 = mesh
+	puff.position = Vector3(at.x, 0.1, at.z)
+	tree.current_scene.add_child(puff)
+	puff.emitting = true
+	tree.create_timer(1.5).timeout.connect(puff.queue_free)
 
 
 func unlock_and_open() -> void:

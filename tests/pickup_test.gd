@@ -16,7 +16,7 @@ func _run() -> void:
 	for i in 120:
 		await physics_frame
 
-	var player: Player = main.get_node("Player")
+	var player: Player = main.get_node("Players/1")
 	var cog: Grabbable = main.get_node_or_null("BrassCog")
 	if cog == null:
 		print("TEST FAIL: BrassCog not found in Main scene")

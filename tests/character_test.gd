@@ -14,7 +14,7 @@ func _run() -> void:
 	for i in 30:
 		await physics_frame
 
-	var player: Player = main.get_node("Player")
+	var player: Player = main.get_node("Players/1")
 	var visual: Node3D = player.get_node_or_null("CharacterVisual")
 	if visual == null or player.get_node_or_null("MeshInstance3D") != null:
 		print("TEST FAIL: visual node wrong (Sophie missing or capsule present)")

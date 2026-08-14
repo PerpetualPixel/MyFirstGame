@@ -1,51 +1,36 @@
 class_name MainMenu
 extends Node3D
 
-## Cinematic 3D main menu: a moody diorama of the inventor's desk (glowing
-## vacuum tubes, ticking clockwork, blueprints, the golden Will) under a
-## slow orbiting camera, with the menu UI overlaid. Host/Join open real
-## ENet LAN connections; full co-op world sync is still in development, so
-## runs currently start locally either way.
+## Cinematic 3D main menu: a moody diorama of the inventor's desk under a
+## slow orbiting camera. Solo runs launch straight into Main; co-op buttons
+## route to the Lobby scene (ENet LAN, port 8910).
 
 const MAIN_SCENE := "res://scenes/Main.tscn"
-const LOBBY_PORT := 8787
+const LOBBY_SCENE := "res://scenes/Lobby.tscn"
 
 @onready var _pivot: Node3D = $CameraPivot
 @onready var _camera: Camera3D = $CameraPivot/Camera3D
-@onready var _buttons_box: VBoxContainer = $UI/Root/Buttons
-@onready var _host_modal: Control = $UI/Root/HostModal
-@onready var _join_modal: Control = $UI/Root/JoinModal
 @onready var _controls_modal: Control = $UI/Root/ControlsModal
-@onready var _ip_label: Label = $UI/Root/HostModal/Center/Panel/VBox/IPLabel
-@onready var _peers_label: Label = $UI/Root/HostModal/Center/Panel/VBox/PeersLabel
-@onready var _ip_edit: LineEdit = $UI/Root/JoinModal/Center/Panel/VBox/IPEdit
-@onready var _join_status: Label = $UI/Root/JoinModal/Center/Panel/VBox/StatusLabel
 
 var _gears: Array[MeshInstance3D] = []
 var _orbit_time := 0.0
-var _peer: ENetMultiplayerPeer
 
 
 func _ready() -> void:
+	# Returning from a lobby or finished run: clear stale network state.
+	NetworkSession.reset()
+	multiplayer.multiplayer_peer = null
+
 	_build_diorama()
 	_style_buttons()
 
-	$UI/Root/Buttons/StartButton.pressed.connect(_start_run)
-	$UI/Root/Buttons/HostButton.pressed.connect(_open_host)
-	$UI/Root/Buttons/JoinButton.pressed.connect(func() -> void: _open_modal(_join_modal))
-	$UI/Root/Buttons/ControlsButton.pressed.connect(func() -> void: _open_modal(_controls_modal))
+	$UI/Root/Buttons/StartButton.pressed.connect(_start_solo)
+	$UI/Root/Buttons/HostButton.pressed.connect(_open_lobby.bind("host"))
+	$UI/Root/Buttons/JoinButton.pressed.connect(_open_lobby.bind("join"))
+	$UI/Root/Buttons/ControlsButton.pressed.connect(func() -> void: _controls_modal.visible = true)
 	$UI/Root/Buttons/QuitButton.pressed.connect(func() -> void: get_tree().quit())
-	$UI/Root/HostModal/Center/Panel/VBox/StartRunButton.pressed.connect(_start_run)
-	$UI/Root/HostModal/Center/Panel/VBox/CloseHostButton.pressed.connect(_close_host)
-	$UI/Root/JoinModal/Center/Panel/VBox/ConnectButton.pressed.connect(_join_connect)
-	$UI/Root/JoinModal/Center/Panel/VBox/CloseJoinButton.pressed.connect(_close_join)
 	$UI/Root/ControlsModal/Center/Panel/VBox/CloseControlsButton.pressed.connect(
 		func() -> void: _controls_modal.visible = false)
-
-	multiplayer.peer_connected.connect(func(_id: int) -> void: _refresh_peers())
-	multiplayer.peer_disconnected.connect(func(_id: int) -> void: _refresh_peers())
-	multiplayer.connected_to_server.connect(func() -> void: _join_status.text = "Connected to host!")
-	multiplayer.connection_failed.connect(func() -> void: _join_status.text = "Connection failed.")
 
 	# Ambience: wind/rain bed plus a slow grandfather-clock tick.
 	AudioSynthesizer.create_ui_loop("wind", -14.0)
@@ -65,72 +50,14 @@ func _process(delta: float) -> void:
 		gear.rotate_object_local(Vector3.UP, delta * 0.8)
 
 
-func _start_run() -> void:
+func _start_solo() -> void:
+	NetworkSession.reset()
 	get_tree().change_scene_to_file(MAIN_SCENE)
 
 
-# --- LAN lobby -----------------------------------------------------------
-
-
-func _open_host() -> void:
-	_open_modal(_host_modal)
-	_peer = ENetMultiplayerPeer.new()
-	if _peer.create_server(LOBBY_PORT, 3) != OK:
-		_ip_label.text = "Could not open port %d." % LOBBY_PORT
-		_peer = null
-		return
-	multiplayer.multiplayer_peer = _peer
-	_ip_label.text = "Host address: %s : %d" % [_local_ip(), LOBBY_PORT]
-	_refresh_peers()
-
-
-func _close_host() -> void:
-	_host_modal.visible = false
-	multiplayer.multiplayer_peer = null
-	_peer = null
-
-
-func _join_connect() -> void:
-	var ip := _ip_edit.text.strip_edges()
-	if ip.is_empty():
-		_join_status.text = "Enter the host's IP address."
-		return
-	_peer = ENetMultiplayerPeer.new()
-	if _peer.create_client(ip, LOBBY_PORT) != OK:
-		_join_status.text = "Invalid address."
-		_peer = null
-		return
-	multiplayer.multiplayer_peer = _peer
-	_join_status.text = "Connecting to %s..." % ip
-
-
-func _close_join() -> void:
-	_join_modal.visible = false
-	multiplayer.multiplayer_peer = null
-	_peer = null
-	_join_status.text = ""
-
-
-func _refresh_peers() -> void:
-	var count := 1 + multiplayer.get_peers().size()
-	_peers_label.text = "Explorers in lobby: %d" % count
-
-
-func _local_ip() -> String:
-	var fallback := "127.0.0.1"
-	for address in IP.get_local_addresses():
-		if address.begins_with("192.") or address.begins_with("10."):
-			return address
-		if not address.contains(":") and not address.begins_with("127."):
-			fallback = address
-	return fallback
-
-
-func _open_modal(modal: Control) -> void:
-	_host_modal.visible = false
-	_join_modal.visible = false
-	_controls_modal.visible = false
-	modal.visible = true
+func _open_lobby(mode: String) -> void:
+	NetworkSession.lobby_mode = mode
+	get_tree().change_scene_to_file(LOBBY_SCENE)
 
 
 # --- Presentation --------------------------------------------------------
@@ -182,12 +109,10 @@ func _build_diorama() -> void:
 	_box(Vector3(0, -0.05, 0), Vector3(8, 0.1, 8), floor_mat)
 	_box(Vector3(0, 1.5, -2.2), Vector3(6, 3.2, 0.15), _mat(Color(0.14, 0.12, 0.12), 0.0, 0.8))
 
-	# Desk.
 	_box(Vector3(0, 0.92, 0), Vector3(2.3, 0.12, 1.25), mahogany)
 	for corner in [Vector3(1.0, 0.45, 0.5), Vector3(-1.0, 0.45, 0.5), Vector3(1.0, 0.45, -0.5), Vector3(-1.0, 0.45, -0.5)]:
 		_box(corner, Vector3(0.12, 0.9, 0.12), mahogany)
 
-	# The glowing golden Will, center stage.
 	var gold := _mat(Color(0.95, 0.78, 0.3), 0.7, 0.3)
 	gold.emission_enabled = true
 	gold.emission = Color(0.9, 0.7, 0.25)
@@ -201,7 +126,6 @@ func _build_diorama() -> void:
 	will_light.position = Vector3(0, 1.4, 0)
 	add_child(will_light)
 
-	# Vacuum tubes on brass bases.
 	var tube_glow := _mat(Color(1.0, 0.7, 0.35), 0.0, 0.3)
 	tube_glow.emission_enabled = true
 	tube_glow.emission = Color(1.0, 0.6, 0.25)
@@ -210,7 +134,6 @@ func _build_diorama() -> void:
 		_cylinder(spot + Vector3(0, 1.01, 0), 0.07, 0.06, brass)
 		_cylinder(spot + Vector3(0, 1.16, 0), 0.045, 0.24, tube_glow)
 
-	# Clockwork mechanism with two visibly spinning gears.
 	_box(Vector3(0.75, 1.13, -0.3), Vector3(0.5, 0.3, 0.35), dark_brass)
 	var gear_a := _cylinder(Vector3(0.65, 1.34, -0.1), 0.12, 0.03, brass)
 	gear_a.rotation.x = PI / 2.0
@@ -219,14 +142,12 @@ func _build_diorama() -> void:
 	gear_b.rotation.x = PI / 2.0
 	_gears.append(gear_b)
 
-	# Blueprints and a stray gear.
 	var print_a := _box(Vector3(0.35, 0.985, 0.35), Vector3(0.55, 0.01, 0.4), paper)
 	print_a.rotation.y = 0.4
 	var print_b := _box(Vector3(-0.4, 0.985, -0.38), Vector3(0.5, 0.01, 0.36), paper)
 	print_b.rotation.y = -0.3
 	_cylinder(Vector3(0.15, 1.0, -0.45), 0.09, 0.03, brass)
 
-	# Warm flickering side lights over the cool ambient.
 	for spot in [Vector3(1.3, 1.9, 0.9), Vector3(-1.3, 1.7, 0.6)]:
 		var flame := FlickerLight.new()
 		flame.base_energy = 0.55
@@ -235,7 +156,6 @@ func _build_diorama() -> void:
 		flame.position = spot
 		add_child(flame)
 
-	# Dust motes drifting through the light.
 	var dust := GPUParticles3D.new()
 	dust.amount = 26
 	dust.lifetime = 7.0

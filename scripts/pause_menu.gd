@@ -46,7 +46,9 @@ func open_menu() -> void:
 	is_open = true
 	visible = true
 	_show_controls(false)
-	get_tree().paused = true
+	# Co-op never pauses the tree — the partner's world keeps running.
+	if not NetworkSession.multiplayer_active:
+		get_tree().paused = true
 
 
 func resume() -> void:
@@ -54,7 +56,8 @@ func resume() -> void:
 		return
 	is_open = false
 	visible = false
-	get_tree().paused = false
+	if not NetworkSession.multiplayer_active:
+		get_tree().paused = false
 
 
 func _show_controls(shown: bool) -> void:
@@ -64,5 +67,9 @@ func _show_controls(shown: bool) -> void:
 
 
 func _on_restart() -> void:
-	get_tree().paused = false
-	get_tree().reload_current_scene()
+	var gm: Node = get_node_or_null("../GameManager")
+	if gm and gm.has_method("request_restart"):
+		gm.request_restart()
+	else:
+		get_tree().paused = false
+		get_tree().reload_current_scene()

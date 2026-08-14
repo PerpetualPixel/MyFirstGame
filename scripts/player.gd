@@ -30,11 +30,55 @@ var _visual_base_pos := Vector3.ZERO
 var _gait_phase := 0.0
 var _adjusting_mirror: RotatingMirror = null
 var _mirror_adjusted := false
+var _mirror_sync_accum := 0.0
 var _step_accum := 0.9
 var _fade_walls: Array = []
 var _wall_blocking := {}
 var _fade_frame := 0
 var _prompt_frame := 0
+
+## Replicated by the MultiplayerSynchronizer: remote peers drive the walk
+## animation from this instead of simulated velocity.
+var net_speed := 0.0
+## True while a fullscreen UI (wiring minigame in co-op) owns the input.
+var ui_locked := false
+
+## The player this machine controls (for camera shake and QoL helpers).
+static var local_instance: Player
+
+var _trauma := 0.0
+var _camera_base_pos := Vector3.ZERO
+
+
+func _enter_tree() -> void:
+	# Spawned players are named after their peer id ("1" = host).
+	if str(name).is_valid_int():
+		set_multiplayer_authority(str(name).to_int())
+
+
+func _exit_tree() -> void:
+	if local_instance == self:
+		local_instance = null
+
+
+func is_local_player() -> bool:
+	return not NetworkSession.multiplayer_active or is_multiplayer_authority()
+
+
+func player_id() -> int:
+	return str(name).to_int() if str(name).is_valid_int() else 1
+
+
+func player_color() -> Color:
+	return Color(1.0, 0.72, 0.25) if player_id() == 1 else Color(0.3, 0.9, 1.0)
+
+
+## Camera trauma with distance falloff; safe to call from anywhere.
+static func shake(amount: float, at: Vector3) -> void:
+	if local_instance == null:
+		return
+	var falloff := 1.0 / (1.0 + local_instance.global_position.distance_to(at) * 0.12)
+	local_instance._trauma = clampf(local_instance._trauma + amount * falloff, 0.0, 1.0)
 
 ## The Grabbable currently being carried, or null.
 var held_item: Grabbable = null
@@ -43,10 +87,35 @@ var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 
 func _ready() -> void:
+	add_to_group("players")
 	# CameraPivot is top_level: it never inherits the body's rotation,
 	# so snap it onto the player once at spawn.
 	camera_pivot.global_position = global_position
+	_camera_base_pos = _camera.position
+	_camera.current = is_local_player()
+	if is_local_player():
+		local_instance = self
 	_setup_character_visual()
+	_add_identity_ring()
+
+
+## Colored identity ring at the feet: Host/P1 amber, partner cyan.
+func _add_identity_ring() -> void:
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.4
+	torus.outer_radius = 0.5
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = player_color()
+	mat.emission_enabled = true
+	mat.emission = player_color()
+	mat.emission_energy_multiplier = 1.6
+	torus.material = mat
+	ring.mesh = torus
+	ring.position = Vector3(0, 0.06, 0)
+	ring.scale = Vector3(1, 0.3, 1)
+	add_child(ring)
 
 
 ## Normalize the imported character model no matter how it was authored:
@@ -188,10 +257,16 @@ func teleport(pos: Vector3) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# Remote replicas: position/rotation arrive via the synchronizer; only
+	# the walk animation runs locally, driven by the replicated speed.
+	if not is_local_player():
+		_animate_visual(delta)
+		return
+
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
 
-	var input_dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var input_dir := Vector2.ZERO if ui_locked else Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	# Holding [E] on a mirror captures [A]/[D] for swiveling instead of
 	# strafing; movement is suppressed until the hold is released.
 	if _adjusting_mirror:
@@ -199,10 +274,13 @@ func _physics_process(delta: float) -> void:
 		if absf(axis) > 0.01:
 			_adjusting_mirror.adjust(axis, delta)
 			_mirror_adjusted = true
+			# Stream the live angle to the partner at 10 Hz.
+			_mirror_sync_accum += delta
+			if NetworkSession.multiplayer_active and _mirror_sync_accum >= 0.1:
+				_mirror_sync_accum = 0.0
+				_adjusting_mirror._net_set_angle.rpc(_adjusting_mirror.rotation.y)
 		if global_position.distance_to(_adjusting_mirror.global_position) > 3.5:
-			_adjusting_mirror.end_adjust()
-			_adjusting_mirror = null
-			_mirror_adjusted = false
+			_finish_mirror_adjust()
 		input_dir = Vector2.ZERO
 	# Rotate input by the camera yaw so "up" always moves away from the camera.
 	var direction := camera_pivot.basis * Vector3(input_dir.x, 0.0, input_dir.y)
@@ -219,9 +297,25 @@ func _physics_process(delta: float) -> void:
 	velocity.z = flat_velocity.z
 
 	move_and_slide()
+	net_speed = Vector2(velocity.x, velocity.z).length()
 	_update_wall_fade(delta)
 	_animate_visual(delta)
 	_update_footsteps(delta)
+	_update_camera_shake(delta)
+
+
+## Trauma-based shake: squared falloff, random offsets on the camera.
+func _update_camera_shake(delta: float) -> void:
+	if _trauma <= 0.0:
+		return
+	_trauma = maxf(_trauma - delta * 1.4, 0.0)
+	var intensity := _trauma * _trauma
+	_camera.position = _camera_base_pos + Vector3(
+		randf_range(-1, 1) * 0.35 * intensity,
+		randf_range(-1, 1) * 0.3 * intensity,
+		0.0)
+	if _trauma <= 0.0:
+		_camera.position = _camera_base_pos
 
 
 ## Stride-timed footsteps; stone on the porch/yard, hardwood indoors.
@@ -242,7 +336,7 @@ func _update_footsteps(delta: float) -> void:
 ## Skeletal animations when the asset has them; otherwise a procedural
 ## gait: stride-synced bobbing, momentum lean, and breathing sway at rest.
 func _animate_visual(delta: float) -> void:
-	var speed := Vector2(velocity.x, velocity.z).length()
+	var speed := Vector2(velocity.x, velocity.z).length() if is_local_player() else net_speed
 	var stride := clampf(speed / max_speed, 0.0, 1.0)
 
 	if _anim_player and not _walk_anim.is_empty():
@@ -361,6 +455,8 @@ func _compute_blocking_walls() -> Dictionary:
 
 
 func _process(delta: float) -> void:
+	if not is_local_player():
+		return
 	# Exponential smoothing keeps the follow frame-rate independent.
 	var weight := 1.0 - exp(-camera_follow_speed * delta)
 	camera_pivot.global_position = camera_pivot.global_position.lerp(global_position, weight)
@@ -405,6 +501,8 @@ func _update_prompt() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not is_local_player() or ui_locked:
+		return
 	# [E] always interacts (valves, doors, mirrors work while carrying);
 	# [Q] is the dedicated drop key, so tools are never dropped by accident.
 	if event.is_action_pressed("interact"):
@@ -414,19 +512,120 @@ func _unhandled_input(event: InputEvent) -> void:
 			_adjusting_mirror = target
 			_mirror_adjusted = false
 		elif target:
-			target.interact(self)
-			if target is Door and not (target as Door).locked:
-				play_action("moves/open_door")
+			request_interact(target)
 	elif event.is_action_released("interact"):
 		if _adjusting_mirror:
-			if _mirror_adjusted:
-				_adjusting_mirror.end_adjust()
-			else:
-				_adjusting_mirror.interact(self)  # quick tap = 15° nudge
-			_adjusting_mirror = null
-			_mirror_adjusted = false
+			_finish_mirror_adjust()
 	elif event.is_action_pressed("drop"):
-		drop_held()
+		if NetworkSession.multiplayer_active:
+			_net_drop.rpc()
+		else:
+			drop_held()
+	elif event.is_action_pressed("ping"):
+		var at := global_position - global_transform.basis.z * 1.5
+		if NetworkSession.multiplayer_active:
+			_net_ping.rpc(at)
+		else:
+			_spawn_ping(at)
+
+
+func _finish_mirror_adjust() -> void:
+	if _adjusting_mirror == null:
+		return
+	if _mirror_adjusted:
+		_adjusting_mirror.end_adjust()
+		if NetworkSession.multiplayer_active:
+			_adjusting_mirror._net_finish_angle.rpc(_adjusting_mirror.rotation.y)
+	else:
+		request_interact(_adjusting_mirror)  # quick tap = 15° nudge
+	_adjusting_mirror = null
+	_mirror_adjusted = false
+
+
+## Route an interaction: in co-op it executes on EVERY peer via an RPC on
+## this player node, so `self` resolves to the correct replica everywhere
+## and world state (doors, valves, gears, carried items) stays consistent.
+func request_interact(target: Node) -> void:
+	if NetworkSession.multiplayer_active:
+		_net_interact.rpc(target.get_path())
+	else:
+		_do_interact_target(target)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _net_interact(path: NodePath) -> void:
+	if NetworkSession.multiplayer_active:
+		var sender := multiplayer.get_remote_sender_id()
+		if sender != 0 and sender != get_multiplayer_authority():
+			return
+	var target := get_node_or_null(path)
+	if target and target.has_method("interact"):
+		_do_interact_target(target)
+
+
+func _do_interact_target(target: Node) -> void:
+	target.interact(self)
+	if target is Door and not (target as Door).locked:
+		play_action("moves/open_door")
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _net_drop() -> void:
+	if NetworkSession.multiplayer_active:
+		var sender := multiplayer.get_remote_sender_id()
+		if sender != 0 and sender != get_multiplayer_authority():
+			return
+	drop_held()
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _net_ping(at: Vector3) -> void:
+	_spawn_ping(at)
+
+
+## Glowing 4-second ping beacon in this player's color, with a chime.
+func _spawn_ping(at: Vector3) -> void:
+	var beacon := Node3D.new()
+	var column := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.12
+	cyl.bottom_radius = 0.3
+	cyl.height = 2.6
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var tint := player_color()
+	mat.albedo_color = Color(tint.r, tint.g, tint.b, 0.45)
+	mat.emission_enabled = true
+	mat.emission = tint
+	mat.emission_energy_multiplier = 2.0
+	cyl.material = mat
+	column.mesh = cyl
+	column.position = Vector3(0, 1.3, 0)
+	beacon.add_child(column)
+	var label := Label3D.new()
+	label.text = "Player %d pinged here!" % player_id()
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = true
+	label.font_size = 40
+	label.outline_size = 10
+	label.pixel_size = 0.007
+	label.modulate = tint
+	label.position = Vector3(0, 2.9, 0)
+	beacon.add_child(label)
+	var light := OmniLight3D.new()
+	light.light_color = tint
+	light.light_energy = 1.2
+	light.omni_range = 4.0
+	light.position = Vector3(0, 1.2, 0)
+	beacon.add_child(light)
+	beacon.position = at
+	var parent_node: Node = get_tree().current_scene
+	if parent_node == null:
+		parent_node = get_parent()
+	parent_node.add_child(beacon)
+	AudioSynthesizer.play_at("chime", at, -12.0, 1.5)
+	get_tree().create_timer(4.0).timeout.connect(beacon.queue_free)
 
 
 ## Called by Grabbable.interact(); attaches the item to the hold point.

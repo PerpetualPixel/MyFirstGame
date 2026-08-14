@@ -51,8 +51,18 @@ var _drag_node: Node2D
 
 func _ready() -> void:
 	visible = false
-	_randomize_board()
 	_build_buttons()
+
+
+## Build the board from a seed (0 = random). Called by the owning breaker;
+## in co-op the seed derives from the shared run seed on every peer.
+func setup(seed_value: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	if seed_value != 0:
+		rng.seed = seed_value
+	else:
+		rng.randomize()
+	_randomize_board(rng)
 
 
 func _input(event: InputEvent) -> void:
@@ -83,7 +93,12 @@ func open() -> void:
 	_selected = ""
 	_set_hint()
 	add_to_group("modal_ui")
-	get_tree().paused = true
+	# Solo pauses the whole tree; in co-op the world must keep running for
+	# the partner, so only lock this machine's player input.
+	if NetworkSession.multiplayer_active:
+		_set_local_lock(true)
+	else:
+		get_tree().paused = true
 
 
 func close() -> void:
@@ -93,8 +108,17 @@ func close() -> void:
 	visible = false
 	remove_from_group("modal_ui")
 	if not is_solved:
-		get_tree().paused = false
+		if NetworkSession.multiplayer_active:
+			_set_local_lock(false)
+		else:
+			get_tree().paused = false
 	closed.emit()
+
+
+func _set_local_lock(locked: bool) -> void:
+	for player in get_tree().get_nodes_in_group("players"):
+		if player.is_local_player():
+			player.ui_locked = locked
 
 
 ## Wire a color to a port (0-based). Shared by drags, clicks, and tests.
@@ -128,9 +152,7 @@ static func clue_holds(clue: Dictionary, mapping: Dictionary) -> bool:
 	return false
 
 
-func _randomize_board() -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.randomize()
+func _randomize_board(rng: RandomNumberGenerator) -> void:
 	var ports := range(WIRES.size())
 	for i in range(ports.size() - 1, 0, -1):
 		var j := rng.randi_range(0, i)
@@ -333,6 +355,9 @@ func _complete() -> void:
 	AudioSynthesizer.play_ui("chime", -4.0)
 	var timer := get_tree().create_timer(0.7, true)
 	timer.timeout.connect(func() -> void:
-		get_tree().paused = false
+		if NetworkSession.multiplayer_active:
+			_set_local_lock(false)
+		else:
+			get_tree().paused = false
 		close()
 		solved.emit())

@@ -1,7 +1,7 @@
 extends SceneTree
-## Main menu regression: scene loads, five styled buttons exist, the
-## camera orbits, the LAN lobby opens a real ENet server and closes
-## cleanly, modals switch exclusively, and the project boots to the menu.
+## Main menu + lobby regression: menu loads with five styled buttons and an
+## orbiting camera; the Lobby scene hosts a real ENet server on port 8910,
+## enables Start for the host (solo allowed), and resets cleanly.
 ## Run: godot --headless --path . --script res://tests/menu_test.gd
 
 func _initialize() -> void:
@@ -33,29 +33,28 @@ func _run() -> void:
 		print("TEST FAIL: cinematic camera is not orbiting")
 		quit(1)
 		return
-
-	# LAN lobby: hosting must open a live ENet server.
-	menu._open_host()
+	menu.queue_free()
 	await process_frame
-	var host_modal: Control = menu.get_node("UI/Root/HostModal")
-	var ip_text: String = menu.get_node("UI/Root/HostModal/Center/Panel/VBox/IPLabel").text
-	if not host_modal.visible or menu.multiplayer.multiplayer_peer == null or not "Host address" in ip_text:
-		print("TEST FAIL: host lobby did not open a server (label: '%s')" % ip_text)
+	await process_frame
+
+	# Lobby: hosting opens a live ENet server on 8910.
+	NetworkSession.lobby_mode = "join"  # prevent auto-host; we drive it
+	var lobby: Lobby = (load("res://scenes/Lobby.tscn") as PackedScene).instantiate()
+	root.add_child(lobby)
+	await process_frame
+	lobby.host_game()
+	await process_frame
+	var status: String = lobby.get_node("Center/Panel/VBox/Status").text
+	var start_btn: Button = lobby.get_node("Center/Panel/VBox/StartButton")
+	if lobby.multiplayer.multiplayer_peer == null or not "Hosting" in status or start_btn.disabled:
+		print("TEST FAIL: lobby host failed (status: '%s')" % status)
 		quit(1)
 		return
-	menu._close_host()
-	if host_modal.visible or menu.multiplayer.multiplayer_peer != null:
-		print("TEST FAIL: lobby did not close cleanly")
+	lobby._reset_peer()
+	if lobby.multiplayer.multiplayer_peer != null:
+		print("TEST FAIL: lobby did not reset its peer")
 		quit(1)
 		return
 
-	# Modals are mutually exclusive.
-	menu._open_modal(menu.get_node("UI/Root/JoinModal"))
-	menu._open_modal(menu.get_node("UI/Root/ControlsModal"))
-	if menu.get_node("UI/Root/JoinModal").visible or not menu.get_node("UI/Root/ControlsModal").visible:
-		print("TEST FAIL: modal exclusivity broken")
-		quit(1)
-		return
-
-	print("TEST PASS: main menu scene, lobby, and modals OK")
+	print("TEST PASS: menu and lobby OK")
 	quit(0)

@@ -9,9 +9,16 @@ background_color = Color(0.03, 0.045, 0.09, 1)
 ambient_light_source = 2
 ambient_light_color = Color(0.5, 0.58, 0.8, 1)
 ambient_light_energy = 0.25
+glow_enabled = true
+glow_intensity = 0.7
+glow_bloom = 0.1
+glow_hdr_threshold = 1.0
 volumetric_fog_enabled = true
 volumetric_fog_density = 0.03
 volumetric_fog_albedo = Color(0.5, 0.55, 0.75, 1)
+adjustment_enabled = true
+adjustment_contrast = 1.05
+adjustment_saturation = 1.08
 
 [node name="MainMenu" type="Node3D"]
 script = ExtResource("1_menu")
@@ -85,97 +92,6 @@ text = "Controls & Settings"
 custom_minimum_size = Vector2(320, 54)
 text = "Quit to Desktop"
 
-[node name="HostModal" type="Control" parent="UI/Root"]
-visible = false
-anchor_right = 1.0
-anchor_bottom = 1.0
-
-[node name="Dim" type="ColorRect" parent="UI/Root/HostModal"]
-anchor_right = 1.0
-anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.6)
-
-[node name="Center" type="CenterContainer" parent="UI/Root/HostModal"]
-anchor_right = 1.0
-anchor_bottom = 1.0
-
-[node name="Panel" type="PanelContainer" parent="UI/Root/HostModal/Center"]
-
-[node name="VBox" type="VBoxContainer" parent="UI/Root/HostModal/Center/Panel"]
-custom_minimum_size = Vector2(460, 0)
-theme_override_constants/separation = 12
-
-[node name="TitleH" type="Label" parent="UI/Root/HostModal/Center/Panel/VBox"]
-theme_override_font_sizes/font_size = 30
-text = "Host Co-op Lobby (LAN)"
-horizontal_alignment = 1
-
-[node name="IPLabel" type="Label" parent="UI/Root/HostModal/Center/Panel/VBox"]
-theme_override_font_sizes/font_size = 20
-text = "Host address: ..."
-horizontal_alignment = 1
-
-[node name="PeersLabel" type="Label" parent="UI/Root/HostModal/Center/Panel/VBox"]
-theme_override_font_sizes/font_size = 20
-text = "Explorers in lobby: 1"
-horizontal_alignment = 1
-
-[node name="NoteH" type="Label" parent="UI/Root/HostModal/Center/Panel/VBox"]
-theme_override_font_sizes/font_size = 14
-text = "Co-op world sync is in development —
-the run starts locally for now."
-horizontal_alignment = 1
-
-[node name="StartRunButton" type="Button" parent="UI/Root/HostModal/Center/Panel/VBox"]
-custom_minimum_size = Vector2(0, 46)
-text = "Start Run"
-
-[node name="CloseHostButton" type="Button" parent="UI/Root/HostModal/Center/Panel/VBox"]
-custom_minimum_size = Vector2(0, 46)
-text = "Close Lobby"
-
-[node name="JoinModal" type="Control" parent="UI/Root"]
-visible = false
-anchor_right = 1.0
-anchor_bottom = 1.0
-
-[node name="Dim" type="ColorRect" parent="UI/Root/JoinModal"]
-anchor_right = 1.0
-anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.6)
-
-[node name="Center" type="CenterContainer" parent="UI/Root/JoinModal"]
-anchor_right = 1.0
-anchor_bottom = 1.0
-
-[node name="Panel" type="PanelContainer" parent="UI/Root/JoinModal/Center"]
-
-[node name="VBox" type="VBoxContainer" parent="UI/Root/JoinModal/Center/Panel"]
-custom_minimum_size = Vector2(420, 0)
-theme_override_constants/separation = 12
-
-[node name="TitleJ" type="Label" parent="UI/Root/JoinModal/Center/Panel/VBox"]
-theme_override_font_sizes/font_size = 30
-text = "Join Game"
-horizontal_alignment = 1
-
-[node name="IPEdit" type="LineEdit" parent="UI/Root/JoinModal/Center/Panel/VBox"]
-custom_minimum_size = Vector2(0, 44)
-placeholder_text = "Host IP (e.g. 192.168.1.20)"
-
-[node name="ConnectButton" type="Button" parent="UI/Root/JoinModal/Center/Panel/VBox"]
-custom_minimum_size = Vector2(0, 46)
-text = "Connect"
-
-[node name="StatusLabel" type="Label" parent="UI/Root/JoinModal/Center/Panel/VBox"]
-theme_override_font_sizes/font_size = 16
-text = ""
-horizontal_alignment = 1
-
-[node name="CloseJoinButton" type="Button" parent="UI/Root/JoinModal/Center/Panel/VBox"]
-custom_minimum_size = Vector2(0, 46)
-text = "Back"
-
 [node name="ControlsModal" type="Control" parent="UI/Root"]
 visible = false
 anchor_right = 1.0
@@ -193,7 +109,7 @@ anchor_bottom = 1.0
 [node name="Panel" type="PanelContainer" parent="UI/Root/ControlsModal/Center"]
 
 [node name="VBox" type="VBoxContainer" parent="UI/Root/ControlsModal/Center/Panel"]
-custom_minimum_size = Vector2(480, 0)
+custom_minimum_size = Vector2(500, 0)
 theme_override_constants/separation = 10
 
 [node name="TitleC" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
@@ -212,6 +128,10 @@ text = "[E]  —  Interact / Hold + [A][D] to swivel mirrors"
 [node name="Drop" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18
 text = "[Q]  —  Drop Carried Item"
+
+[node name="Ping" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 18
+text = "[F]  —  Ping Location (co-op)"
 
 [node name="Esc" type="Label" parent="UI/Root/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18

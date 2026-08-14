@@ -27,6 +27,7 @@ var _steam_mat := StandardMaterial3D.new()
 
 
 func _ready() -> void:
+	add_to_group("vault_doors")
 	_light_mat.emission_enabled = true
 	_steam_mat.emission_enabled = true
 	_apply_lamp_color(_light_mat, COLOR_WAIT)
@@ -61,6 +62,11 @@ func _try_open() -> void:
 	is_open = true
 	var tween := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tween.tween_property(_gate, "position:y", _gate.position.y - 2.7, open_duration)
+	# Heavy brass gate collapsing into the floor: rumble + dust + chime.
+	Player.shake(0.55, global_position)
+	Door._dust_puff(global_position + Vector3(-0.8, 0, 0), 14)
+	Door._dust_puff(global_position + Vector3(0.8, 0, 0), 14)
+	AudioSynthesizer.play_at("chime", global_position, -8.0, 0.6)
 	opened.emit()
 
 

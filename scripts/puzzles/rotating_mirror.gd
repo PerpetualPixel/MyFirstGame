@@ -50,6 +50,21 @@ func adjust(direction: float, delta: float) -> void:
 		AudioSynthesizer.play_at("ratchet", global_position, -10.0)
 
 
+## Live angle stream from the adjusting peer (10 Hz while swiveling).
+@rpc("any_peer", "call_remote", "unreliable")
+func _net_set_angle(angle: float) -> void:
+	if _tween and _tween.is_running():
+		_tween.kill()
+	rotation.y = angle
+
+
+## Final angle on release: set exactly, then snap to the same detent.
+@rpc("any_peer", "call_remote", "reliable")
+func _net_finish_angle(angle: float) -> void:
+	rotation.y = angle
+	end_adjust()
+
+
 ## Settle onto the nearest detent when the hold is released.
 func end_adjust() -> void:
 	var detent := roundf(rad_to_deg(rotation.y) / snap_degrees) * snap_degrees

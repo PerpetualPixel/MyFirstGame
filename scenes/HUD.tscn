@@ -1,6 +1,54 @@
-[gd_scene format=3]
+[gd_scene load_steps=3 format=3]
+
+[sub_resource type="Shader" id="Shader_vignette"]
+code = "shader_type canvas_item;
+uniform float strength : hint_range(0.0, 1.0) = 0.3;
+uniform vec4 tint : source_color = vec4(0.0, 0.0, 0.0, 1.0);
+uniform float pulse = 0.0;
+void fragment() {
+	vec2 uv = UV - 0.5;
+	float d = length(uv) * 1.5;
+	float v = smoothstep(0.55, 1.15, d);
+	COLOR = vec4(tint.rgb, v * (strength + pulse));
+}"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_vignette"]
+shader = SubResource("Shader_vignette")
+shader_parameter/strength = 0.3
+shader_parameter/tint = Color(0, 0, 0, 1)
+shader_parameter/pulse = 0.0
 
 [node name="HUD" type="CanvasLayer"]
+
+[node name="Vignette" type="ColorRect" parent="."]
+material = SubResource("ShaderMaterial_vignette")
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="Banner" type="Label" parent="."]
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -400.0
+offset_top = 78.0
+offset_right = 400.0
+offset_bottom = 130.0
+pivot_offset = Vector2(400, 26)
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.05, 0, 1)
+theme_override_constants/outline_size = 10
+theme_override_font_sizes/font_size = 34
+text = ""
+horizontal_alignment = 1
+
+[node name="PartnerArrow" type="Label" parent="."]
+visible = false
+offset_right = 80.0
+offset_bottom = 32.0
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 8
+theme_override_font_sizes/font_size = 22
+text = "< PARTNER >"
 
 [node name="TimerLabel" type="Label" parent="."]
 anchor_left = 0.5
@@ -9,6 +57,7 @@ offset_left = -150.0
 offset_top = 8.0
 offset_right = 150.0
 offset_bottom = 64.0
+pivot_offset = Vector2(150, 28)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 8
 theme_override_font_sizes/font_size = 44

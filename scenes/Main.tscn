@@ -1,8 +1,7 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/mansion_gen.gd" id="2_mansion"]
-[ext_resource type="PackedScene" path="res://scenes/Player.tscn" id="3_player"]
 [ext_resource type="PackedScene" path="res://scenes/BrassCog.tscn" id="4_cog"]
 [ext_resource type="PackedScene" path="res://scenes/HUD.tscn" id="5_hud"]
 [ext_resource type="Script" path="res://scripts/game_manager.gd" id="6_manager"]
@@ -21,6 +20,13 @@ fog_density = 0.006
 volumetric_fog_enabled = true
 volumetric_fog_density = 0.02
 volumetric_fog_albedo = Color(0.55, 0.62, 0.8, 1)
+glow_enabled = true
+glow_intensity = 0.65
+glow_bloom = 0.08
+glow_hdr_threshold = 1.0
+adjustment_enabled = true
+adjustment_contrast = 1.05
+adjustment_saturation = 1.08
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_main")
@@ -40,8 +46,11 @@ light_color = Color(0.72, 0.78, 1.0, 1)
 light_energy = 0.4
 shadow_enabled = true
 
-[node name="Player" parent="." instance=ExtResource("3_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
+[node name="Players" type="Node3D" parent="."]
+
+[node name="PlayerSpawner" type="MultiplayerSpawner" parent="."]
+spawn_path = NodePath("../Players")
+_spawnable_scenes = PackedStringArray("res://scenes/Player.tscn")
 
 [node name="BrassCog" parent="." instance=ExtResource("4_cog")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0.6, 10)

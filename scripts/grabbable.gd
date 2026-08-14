@@ -30,6 +30,31 @@ func can_interact(_by: Node3D) -> bool:
 	return holder == null
 
 
+## Drop-position hardening: never release an item inside a wall or over
+## the void. A ray from the carrier's chest to the drop point pulls the
+## item back in front of any wall it would clip through, and a downward
+## ray guarantees there is floor beneath (else drop at the carrier's feet).
+func _safe_drop_position(carrier: Node3D) -> Vector3:
+	var pos := global_position
+	var space := get_world_3d().direct_space_state
+	if carrier != null and is_instance_valid(carrier):
+		var chest: Vector3 = carrier.global_position + Vector3(0, 1.0, 0)
+		var wall_query := PhysicsRayQueryParameters3D.create(chest, pos)
+		wall_query.exclude = [get_rid()]
+		var wall_hit := space.intersect_ray(wall_query)
+		if not wall_hit.is_empty():
+			pos = wall_hit["position"] + (wall_hit["normal"] as Vector3) * 0.25
+	var floor_query := PhysicsRayQueryParameters3D.create(pos + Vector3(0, 0.5, 0), pos + Vector3(0, -6.0, 0))
+	floor_query.exclude = [get_rid()]
+	var floor_hit := space.intersect_ray(floor_query)
+	if floor_hit.is_empty():
+		# No floor below (over the void): drop at the carrier's feet.
+		if carrier != null and is_instance_valid(carrier):
+			return carrier.global_position + Vector3(0, 0.4, 0)
+		return pos
+	return Vector3(pos.x, maxf(pos.y, (floor_hit["position"] as Vector3).y + 0.25), pos.z)
+
+
 func get_prompt(by: Node3D = null) -> String:
 	if by != null and by.get("held_item") != null:
 		return "Hands Full"
@@ -72,6 +97,7 @@ func release() -> void:
 	# current scene if that node is gone (e.g. regenerated level).
 	var drop_parent: Node = _original_parent if is_instance_valid(_original_parent) else get_tree().current_scene
 	reparent(drop_parent)
+	global_position = _safe_drop_position(was_holder)
 	_body.collision_layer = _original_layer
 	_body.collision_mask = _original_mask
 	_body.freeze = false

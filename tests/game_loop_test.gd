@@ -20,7 +20,7 @@ func _run() -> void:
 	var gen: MansionGenerator = main.get_node("MansionGenerator")
 	var route: Dictionary = gen.active_route
 	print("run layout: route=%s valves=%s clock=%s gears=%s" % [route["name"], gen._valve_cells, gen._clock_cell, gen._gear_cells])
-	var player: Player = main.get_node("Player")
+	var player: Player = main.get_node("Players/1")
 	var gm: GameManager = main.get_node("GameManager")
 	var pause_menu: PauseMenu = main.get_node("PauseMenu")
 	var mirrors := _find_all(main, "RotatingMirror")

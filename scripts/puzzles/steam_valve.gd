@@ -75,7 +75,9 @@ func _sync_group() -> void:
 		for valve in valves:
 			valve.lock_open()
 	elif activated and not locked_open:
-		_decay_timer.start(decay_time)
+		# Co-op: only the host runs decay timers; it broadcasts the reset.
+		if not NetworkSession.multiplayer_active or multiplayer.is_server():
+			_decay_timer.start(decay_time)
 
 
 func lock_open() -> void:
@@ -86,11 +88,26 @@ func lock_open() -> void:
 func _on_decay_timeout() -> void:
 	if locked_open or not activated:
 		return
+	if NetworkSession.multiplayer_active:
+		_net_reset.rpc()
+	else:
+		_apply_reset()
+
+
+@rpc("authority", "call_local", "reliable")
+func _net_reset() -> void:
+	_apply_reset()
+
+
+func _apply_reset() -> void:
+	if locked_open or not activated:
+		return
 	activated = false
 	_steam.emitting = true
 	if _steam_audio:
 		_steam_audio.volume_db = -4.0  # loud release hiss, settling back
 		create_tween().tween_property(_steam_audio, "volume_db", -8.0, 1.5)
+	Player.shake(0.7, global_position)  # violent blow-back thud
 	valve_reset.emit()
 
 
