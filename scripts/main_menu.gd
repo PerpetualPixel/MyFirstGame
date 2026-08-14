@@ -125,7 +125,9 @@ func _build_fireplace() -> void:
 	fire_mat.gravity = Vector3(0, -0.5, 0)
 	fire_mat.scale_min = 0.6
 	fire_mat.scale_max = 1.6
-	fire_mat.scale_curve = _get_fire_fade_curve()
+	var fade_curve := CurveTexture.new()
+	fade_curve.curve = _get_fire_fade_curve()
+	fire_mat.scale_curve = fade_curve
 	fire_particles.process_material = fire_mat
 
 	# Fire mesh: soft quad with orange-yellow gradient
