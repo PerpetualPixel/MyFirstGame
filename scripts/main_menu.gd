@@ -44,7 +44,7 @@ func _ready() -> void:
 	if _music_stream:
 		_music_player.stream = _music_stream
 		_music_player.bus = "Master"
-		_music_player.volume_db = GameSettings.music_volume_db
+		_music_player.volume_db = linear2db(0.3)
 		_music_player.play()
 
 	# Ambience: warm jazz-like ambient tone + fire crackle for cozy fireplace feel.
@@ -62,9 +62,9 @@ func _process(delta: float) -> void:
 
 
 func _on_music_volume_changed(value: float) -> void:
-	GameSettings.music_volume_db = linear2db(value / 100.0)
+	var volume_db := linear2db(value / 100.0)
 	if _music_player:
-		_music_player.volume_db = GameSettings.music_volume_db
+		_music_player.volume_db = volume_db
 
 
 func _start_solo() -> void:
