@@ -12,7 +12,7 @@ const LOBBY_SCENE := "res://scenes/Lobby.tscn"
 @onready var _camera: Camera3D = $CameraPivot/Camera3D
 @onready var _controls_modal: Control = $UI/Root/ControlsModal
 @onready var _music_player: AudioStreamPlayer = $MusicPlayer
-@onready var _music_slider: HSlider = $UI/Root/MusicVolumeSlider
+@onready var _music_slider: HSlider = $UI/Root/MusicVolumeContainer/MusicVolumeSlider
 
 var _gears: Array[MeshInstance3D] = []
 var _orbit_time := 0.0
