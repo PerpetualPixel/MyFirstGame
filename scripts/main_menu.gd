@@ -182,12 +182,38 @@ func _shield_ui_from_lights(node: Node) -> void:
 
 func _start_solo() -> void:
 	NetworkSession.reset()
+	await _show_loading()
 	get_tree().change_scene_to_file(MAIN_SCENE)
 
 
 func _open_lobby(mode: String) -> void:
 	NetworkSession.lobby_mode = mode
+	await _show_loading()
 	get_tree().change_scene_to_file(LOBBY_SCENE)
+
+
+## Paint a fullscreen "Loading..." veil and wait two frames so it is
+## actually on screen before the blocking scene load freezes rendering.
+func _show_loading() -> void:
+	for button in _all_buttons($UI):
+		button.disabled = true
+	var veil := ColorRect.new()
+	veil.color = Color(0.02, 0.015, 0.01, 0.88)
+	veil.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var label := Label.new()
+	label.text = "Loading..."
+	label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 44)
+	label.add_theme_color_override("font_color", Color(0.9, 0.76, 0.45))
+	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	label.add_theme_constant_override("shadow_offset_x", 3)
+	label.add_theme_constant_override("shadow_offset_y", 3)
+	veil.add_child(label)
+	$UI.add_child(veil)
+	await get_tree().process_frame
+	await get_tree().process_frame
 
 
 # --- Presentation --------------------------------------------------------

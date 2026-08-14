@@ -12,9 +12,18 @@ var _collapsed := false
 
 
 func _ready() -> void:
+	# Keep processing while paused: the pause menu's size slider should
+	# update the list live behind the settings panel.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_toggle.pressed.connect(_on_toggle_pressed)
 	_apply_scale(GameSettings.objectives_scale)
-	GameSettings.objectives_scale_changed.connect(_apply_scale)
+
+
+## Polled (not signaled): GameSettings is a static class, and the pause
+## menu can change the scale at any time while the tree is paused.
+func _process(_delta: float) -> void:
+	if _objectives.scale.x != GameSettings.objectives_scale:
+		_apply_scale(GameSettings.objectives_scale)
 
 
 func _on_toggle_pressed() -> void:

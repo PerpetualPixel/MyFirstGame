@@ -27,6 +27,8 @@ func _ready() -> void:
 	_streams["wind"] = _gen_wind()
 	_streams["jazz_ambient"] = _gen_jazz_ambient()
 	_streams["fire_crackle"] = _gen_fire_crackle()
+	_streams["zap"] = _gen_zap()
+	_streams["power_up"] = _gen_power_up()
 
 
 func _exit_tree() -> void:
@@ -139,6 +141,38 @@ static func _gen_plug() -> AudioStreamWAV:
 			arc = signf(sin(TAU * 2900.0 * t + 3.0 * sin(TAU * 47.0 * t))) * exp(-t * 16.0) * 0.1
 		var crackle := (randf() * 2.0 - 1.0) * exp(-t * 28.0) * 0.12
 		s[i] = thud + arc + crackle
+	return _make_wav(s)
+
+
+## Electric short: harsh buzz sweeping down, with arc crackle — wrong wire.
+static func _gen_zap() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 0.45)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var freq := 640.0 - t * 700.0  # falling pitch = power draining away
+		var buzz := signf(sin(TAU * freq * t)) * 0.35
+		var gate := 0.5 + 0.5 * signf(sin(TAU * 55.0 * t))  # mains-hum stutter
+		var crackle := (randf() * 2.0 - 1.0) * exp(-t * 9.0) * 0.3
+		s[i] = (buzz * gate + crackle) * exp(-t * 6.5) * 0.85
+	return _make_wav(s)
+
+
+## Power-up: low hum swelling and rising as the mansion's grid wakes.
+static func _gen_power_up() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 1.5)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var phase := 0.0
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var freq := 70.0 + 90.0 * minf(t / 1.1, 1.0)  # 70 Hz -> 160 Hz sweep
+		phase += TAU * freq / SAMPLE_RATE
+		var v := sin(phase) * 0.5 + sin(phase * 2.0) * 0.22 + sin(phase * 3.0) * 0.1
+		var swell := minf(t / 0.5, 1.0) * exp(-maxf(t - 1.1, 0.0) * 7.0)
+		var sparkle := (randf() * 2.0 - 1.0) * 0.04 * swell
+		s[i] = (v * swell + sparkle) * 0.8
 	return _make_wav(s)
 
 

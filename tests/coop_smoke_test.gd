@@ -105,8 +105,14 @@ func _run() -> void:
 	print("shake + banner OK")
 
 	# Safe drop: carry the cog to a wall corner and drop — it must end up
-	# above a floor, not inside geometry or the void.
-	var cog: Grabbable = main.get_node("BrassCog")
+	# above a floor, not inside geometry or the void. The cog is a
+	# test-only prop now, spawned here on the porch.
+	var cog: Grabbable = (load("res://scenes/BrassCog.tscn") as PackedScene).instantiate()
+	cog.name = "BrassCog"
+	cog.position = Vector3(2, 0.6, 10)
+	main.add_child(cog)
+	for i in 20:
+		await physics_frame
 	player.teleport(cog.global_position + Vector3(0, 0, 1.0))
 	for i in 10:
 		await physics_frame

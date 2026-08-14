@@ -14,9 +14,11 @@ extends CharacterBody3D
 
 @export_group("Camera")
 @export var camera_follow_speed: float = 8.0
-@export var camera_zoom_min: float = 2.0
-@export var camera_zoom_max: float = 5.0
-@export var camera_zoom_speed: float = 0.3
+## Orthographic size bounds: smaller = closer. The camera is orthographic,
+## so zoom means changing Camera3D.size — moving it only slides the frame.
+@export var camera_zoom_min: float = 7.0
+@export var camera_zoom_max: float = 16.0
+@export var camera_zoom_speed: float = 1.0
 
 @onready var camera_pivot: Node3D = $CameraPivot
 @onready var _camera: Camera3D = $CameraPivot/Camera3D
@@ -51,6 +53,7 @@ static var local_instance: Player
 
 var _trauma := 0.0
 var _camera_base_pos := Vector3.ZERO
+var _zoom_tween: Tween
 
 
 func _enter_tree() -> void:
@@ -496,13 +499,20 @@ func _update_prompt() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_local_player() or ui_locked:
 		return
-	# Scroll wheel zoom: adjust camera distance
-	if event is InputEventMouseButton:
+	# Scroll wheel zoom: the camera is orthographic, so zoom by tweening
+	# its projection size (position is owned by the follow/shake logic).
+	if event is InputEventMouseButton and event.pressed:
+		var zoom_dir := 0.0
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_camera.position.z = clampf(_camera.position.z - camera_zoom_speed, camera_zoom_min, camera_zoom_max)
-			get_viewport().set_input_as_handled()
+			zoom_dir = -1.0
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_camera.position.z = clampf(_camera.position.z + camera_zoom_speed, camera_zoom_min, camera_zoom_max)
+			zoom_dir = 1.0
+		if zoom_dir != 0.0:
+			var target_size := clampf(_camera.size + zoom_dir * camera_zoom_speed, camera_zoom_min, camera_zoom_max)
+			if _zoom_tween and _zoom_tween.is_running():
+				_zoom_tween.kill()
+			_zoom_tween = create_tween()
+			_zoom_tween.tween_property(_camera, "size", target_size, 0.12)
 			get_viewport().set_input_as_handled()
 	# Mirror rotation: mouse motion swivels; E or ESC exits.
 	if _adjusting_mirror:

@@ -11,6 +11,13 @@ func _run() -> void:
 	var main: Node = (load("res://scenes/Main.tscn") as PackedScene).instantiate()
 	root.add_child(main)
 
+	# The cog is a test-only prop (no longer shipped in Main): spawn it
+	# where it used to sit on the porch.
+	var test_cog: Grabbable = (load("res://scenes/BrassCog.tscn") as PackedScene).instantiate()
+	test_cog.name = "BrassCog"
+	test_cog.position = Vector3(2, 0.6, 10)
+	main.add_child(test_cog)
+
 	# Let the mansion generate and the cog fall asleep on the floor (the
 	# worst case for area detection).
 	for i in 120:

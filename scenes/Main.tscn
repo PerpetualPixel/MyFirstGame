@@ -1,8 +1,7 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/mansion_gen.gd" id="2_mansion"]
-[ext_resource type="PackedScene" path="res://scenes/BrassCog.tscn" id="4_cog"]
 [ext_resource type="PackedScene" path="res://scenes/HUD.tscn" id="5_hud"]
 [ext_resource type="Script" path="res://scripts/game_manager.gd" id="6_manager"]
 [ext_resource type="PackedScene" path="res://scenes/PauseMenu.tscn" id="7_pause"]
@@ -51,9 +50,6 @@ shadow_enabled = true
 [node name="PlayerSpawner" type="MultiplayerSpawner" parent="."]
 spawn_path = NodePath("../Players")
 _spawnable_scenes = PackedStringArray("res://scenes/Player.tscn")
-
-[node name="BrassCog" parent="." instance=ExtResource("4_cog")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0.6, 10)
 
 [node name="HUD" parent="." instance=ExtResource("5_hud")]
 

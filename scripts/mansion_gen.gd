@@ -28,6 +28,7 @@ const WILL_ITEM_SCENE := preload("res://scenes/WillItem.tscn")
 const BRASS_WRENCH_SCENE := preload("res://scenes/BrassWrench.tscn")
 const DOOR_SCENE := preload("res://scenes/Door.tscn")
 const ROOM_SHROUD_SCENE := preload("res://scenes/RoomShroud.tscn")
+const BIG_BATTERY_SCENE := preload("res://scenes/BigBattery.tscn")
 const CLOCKWORK_SCENE := preload("res://scenes/Puzzles/ClockworkMechanism.tscn")
 const BRASS_GEAR_SCENE := preload("res://scenes/BrassGear.tscn")
 
@@ -57,9 +58,11 @@ const ROUTE_VARIANTS := [
 	},
 	{
 		"name": "parlor_loop",
-		"emitter": Vector3(0, 0, 13.0),
+		# x=2 keeps the emitter housing and its beam line clear of the
+		# front door's walk path (door is centered at x=0).
+		"emitter": Vector3(2, 0, 13.0),
 		"maze_cell": Vector2i(1, 1),
-		"mirrors": [Vector3(0, 0, 3), Vector3(3, 0, 3), Vector3(3, 0, 0), Vector3(0, 0, 0)],
+		"mirrors": [Vector3(2, 0, 3), Vector3(3, 0, 3), Vector3(3, 0, 0), Vector3(0, 0, 0)],
 		"solutions": [0.0, 0.0, 90.0, 90.0],
 		"screen": Vector3(0, 1.5, 1.8),
 		"doors": [[Vector2i(1, 2), Vector2i(1, 1)]],
@@ -401,6 +404,16 @@ func _spawn_puzzle() -> void:
 	emitter.name = "Emitter"
 	emitter.position = active_route["emitter"]
 	_generated_root.add_child(emitter)
+
+	# The emitter starts dead: its Heavy Battery hides in a seeded side
+	# room and must be carried to the cradle before the laser fires.
+	var battery := BIG_BATTERY_SCENE.instantiate() as Grabbable
+	battery.name = "HeavyBattery"
+	var battery_options: Array = DECOY_CELL_OPTIONS.filter(
+		func(cell: Vector2i) -> bool: return cell != active_route["maze_cell"])
+	var battery_cell: Vector2i = battery_options[_rng.randi_range(0, battery_options.size() - 1)]
+	battery.position = get_room_center(battery_cell) + Vector3(-2.2, 0.4, 2.2)
+	_generated_root.add_child(battery)
 
 	# Route mirrors at free random 15-degree detents (closed doors block
 	# the beam anyway, so no spawn can pre-solve the circuit).

@@ -1,0 +1,56 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/grabbable.gd" id="1_grabbable"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_case"]
+albedo_color = Color(0.13, 0.14, 0.18, 1)
+metallic = 0.3
+roughness = 0.6
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_copper"]
+albedo_color = Color(0.78, 0.5, 0.28, 1)
+metallic = 0.85
+roughness = 0.3
+
+[sub_resource type="BoxMesh" id="BoxMesh_case"]
+material = SubResource("StandardMaterial3D_case")
+size = Vector3(0.46, 0.5, 0.3)
+
+[sub_resource type="BoxMesh" id="BoxMesh_band"]
+material = SubResource("StandardMaterial3D_copper")
+size = Vector3(0.48, 0.08, 0.32)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_terminal"]
+material = SubResource("StandardMaterial3D_copper")
+top_radius = 0.045
+bottom_radius = 0.045
+height = 0.1
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_case"]
+size = Vector3(0.46, 0.5, 0.3)
+
+[node name="BigBattery" type="RigidBody3D" groups=["batteries"]]
+mass = 6.0
+script = ExtResource("1_grabbable")
+display_name = "Heavy Battery"
+prompt_height = 0.9
+
+[node name="Case" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+mesh = SubResource("BoxMesh_case")
+
+[node name="Band" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.14, 0)
+mesh = SubResource("BoxMesh_band")
+
+[node name="TerminalPos" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.12, 0.55, 0)
+mesh = SubResource("CylinderMesh_terminal")
+
+[node name="TerminalNeg" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.12, 0.55, 0)
+mesh = SubResource("CylinderMesh_terminal")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+shape = SubResource("BoxShape3D_case")

@@ -1,7 +1,8 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/puzzles/light_emitter.gd" id="1_emitter"]
 [ext_resource type="Script" path="res://scripts/puzzles/laser_beam.gd" id="2_beam"]
+[ext_resource type="Script" path="res://scripts/puzzles/battery_socket.gd" id="3_socket"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_iron"]
 albedo_color = Color(0.25, 0.26, 0.3, 1)
@@ -25,6 +26,9 @@ size = Vector3(0.8, 1.3, 0.8)
 script = ExtResource("1_emitter")
 
 [node name="Housing" type="StaticBody3D" parent="."]
+script = ExtResource("3_socket")
+display_name = "Laser Power Cradle"
+prompt_height = 1.9
 
 [node name="Body" type="MeshInstance3D" parent="Housing"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.65, 0)

@@ -86,6 +86,22 @@ func _on_start_pressed() -> void:
 func _net_start(seed_value: int) -> void:
 	NetworkSession.run_seed = seed_value
 	NetworkSession.multiplayer_active = multiplayer.multiplayer_peer != null
+	# Paint a loading veil and let it reach the screen before the blocking
+	# scene load + mansion generation freezes rendering for a moment.
+	var veil := ColorRect.new()
+	veil.color = Color(0.02, 0.015, 0.01, 0.88)
+	veil.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var label := Label.new()
+	label.text = "Loading..."
+	label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 44)
+	label.add_theme_color_override("font_color", Color(0.9, 0.76, 0.45))
+	veil.add_child(label)
+	add_child(veil)
+	await get_tree().process_frame
+	await get_tree().process_frame
 	get_tree().change_scene_to_file(MAIN_SCENE)
 
 

@@ -100,7 +100,7 @@ func _run() -> void:
 	# --- Free-angle swivel: adjust moves smoothly, release snaps to 15° ---
 	var swivel := _mirror_near(mirrors, route["mirrors"][0])
 	var before := swivel.rotation.y
-	swivel.adjust(1.0, 0.2)  # 12 degrees of hold-swivel
+	swivel.adjust_by_mouse(-2400.0)  # ~12 degrees of mouse swivel
 	if absf(swivel.rotation.y - before) < 0.15:
 		print("TEST FAIL: adjust() did not swivel the mirror")
 		quit(1)
@@ -186,9 +186,30 @@ func _run() -> void:
 	pause_menu.resume()
 	await process_frame
 
-	# --- Laser maze ---
+	# --- Laser maze: dead until the Heavy Battery is cradled ---
 	for door in hinged:
 		door.set_open(true)
+	var emitter: LightEmitter = _find_all(main, "LightEmitter")[0]
+	if emitter.powered:
+		print("TEST FAIL: laser powered before battery install")
+		quit(1)
+		return
+	var battery: Grabbable = get_nodes_in_group("batteries")[0]
+	player.teleport(battery.global_position + Vector3(0, 0, 1.0))
+	for i in 10:
+		await physics_frame
+	player.pick_up(battery)
+	if player.held_item != battery:
+		print("TEST FAIL: could not pick up the Heavy Battery")
+		quit(1)
+		return
+	var cradle: BatterySocket = emitter.get_node("Housing")
+	cradle.interact(player)
+	if not emitter.powered or player.held_item != null:
+		print("TEST FAIL: battery install did not power the emitter")
+		quit(1)
+		return
+	print("battery install powers the laser OK")
 	# Align this run's route to its published solution angles.
 	for i in route["mirrors"].size():
 		_mirror_near(mirrors, route["mirrors"][i]).rotation.y = deg_to_rad(route["solutions"][i])

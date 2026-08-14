@@ -63,10 +63,6 @@ restart={
 ]
 }
 
-[autoload]
-
-GameSettings="*res://scripts/game_settings.gd"
-
 [physics]
 
 3d/physics_engine="Jolt Physics"
