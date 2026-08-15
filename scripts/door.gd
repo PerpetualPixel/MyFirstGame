@@ -36,6 +36,13 @@ func _ready() -> void:
 	mat.albedo_color = panel_color
 	mat.roughness = 0.7
 
+	# Door panels join the camera-fade system so a door never hides the
+	# player. The fade code reads material/footprint via metadata since
+	# doors are not CSG boxes (and swing, hence the square footprint).
+	add_to_group("fade_walls")
+	set_meta("fade_material", mat)
+	set_meta("fade_size", Vector3(panel_width, panel_height, panel_width))
+
 	var mesh := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = Vector3(panel_width, panel_height, panel_thickness)

@@ -398,7 +398,10 @@ func _update_wall_fade(delta: float) -> void:
 	for wall in _fade_walls:
 		if not is_instance_valid(wall):
 			continue
-		var mat: StandardMaterial3D = wall.material
+		# CSG walls expose .material; doors register theirs as metadata.
+		var mat: StandardMaterial3D = wall.get("material")
+		if mat == null and wall.has_meta("fade_material"):
+			mat = wall.get_meta("fade_material")
 		if mat == null:
 			continue
 		var target := 0.5 if _wall_blocking.has(wall) else 1.0
@@ -443,7 +446,10 @@ func _compute_blocking_walls() -> Dictionary:
 	for wall in _fade_walls:
 		if blocking.has(wall) or not is_instance_valid(wall):
 			continue
-		var half: Vector3 = wall.size * 0.5
+		var size_value: Variant = wall.get("size")
+		if size_value == null:
+			size_value = wall.get_meta("fade_size", Vector3.ZERO)
+		var half: Vector3 = size_value * 0.5
 		var local: Vector3 = global_position - wall.global_position
 		var closest := Vector3(
 			clampf(local.x, -half.x, half.x), 0.0, clampf(local.z, -half.z, half.z))
