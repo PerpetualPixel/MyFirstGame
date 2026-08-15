@@ -486,8 +486,9 @@ func _update_prompt() -> void:
 		text = "[E] Use"
 		anchor = target
 	# No floating drop hint — the HUD's pack slots already show what's
-	# carried, and [Q] quietly drops the newest item.
-	if anchor:
+	# carried, and [Q] quietly drops the newest item. Silent
+	# interactables (empty prompt, e.g. mirrors) show nothing at all.
+	if anchor and not text.is_empty():
 		if _prompt.text != text:
 			_prompt.text = text  # Label3D rebuilds its mesh on text set
 		_prompt.global_position = anchor.global_position + Vector3(0, height, 0)

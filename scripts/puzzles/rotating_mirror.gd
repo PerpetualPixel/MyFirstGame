@@ -4,29 +4,29 @@ extends Interactable
 ## Brass mirror on a pedestal with free-angle mouse-swivel. Press [E] to
 ## enter rotation mode; move mouse left/right to swivel smoothly with
 ## ratchet clicks every 7.5°; press [E] or [ESC] to exit and snap to
-## nearest 15-degree detent. The brass dial at the base reads the exact
-## angle. Beams reflect off the live collision normal, so any angle works.
+## nearest 15-degree detent. No on-screen text — the ratchet clicks and
+## the mirror itself are the feedback. Beams reflect off the live
+## collision normal, so any angle works.
 
-@export var mouse_sensitivity: float = 0.5
+## Degrees of swivel per 100 px of mouse travel is sensitivity x 1.0
+## (15.0 -> 0.15 deg/px: a ~300 px flick turns 45 degrees).
+@export var mouse_sensitivity: float = 15.0
 @export var snap_degrees: float = 15.0
 
 @onready var _beam: LaserBeam = $Beam
-@onready var _dial: Label3D = $AngleDial
 
 var _powered_frame: int = -100
 var _tween: Tween
 var _ratchet_accum := 0.0
-var _last_dial_deg := -1000
 
 
 func _ready() -> void:
 	_beam.add_exception(self)
-	_update_dial()
 
 
+## Silent: no floating text on mirrors — players discover the swivel.
 func get_prompt(_by: Node3D = null) -> String:
-	var hint_suffix := "\n[Mouse] Swivel • [ESC] Exit" if GameSettings.hints_enabled else ""
-	return "[E] Rotate Mirror" + hint_suffix
+	return ""
 
 
 ## Start rotation mode: called by player when E is pressed on this mirror.
@@ -86,16 +86,3 @@ func _physics_process(_delta: float) -> void:
 	# Power decays when no beam has refreshed it for over a frame.
 	if Engine.get_physics_frames() - _powered_frame > 1:
 		_beam.shut_off()
-	_update_dial()
-
-
-func _update_dial() -> void:
-	if _dial == null:
-		return
-	# Only touch the Label3D when the displayed integer changes — setting
-	# text regenerates its mesh.
-	var deg := roundi(wrapf(rad_to_deg(rotation.y), 0.0, 360.0))
-	if deg == _last_dial_deg:
-		return
-	_last_dial_deg = deg
-	_dial.text = "%d°" % deg
