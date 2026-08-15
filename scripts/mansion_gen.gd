@@ -758,18 +758,30 @@ func _build_exit_zone() -> void:
 # --- Interior atmosphere -------------------------------------------------
 
 
+## Side table carrying a flickering oil lamp — each room's light source
+## (replaces the old mid-air ceiling lamps; the rooms have no ceilings).
+func _add_table_lamp(at: Vector3) -> void:
+	_add_prop(at + Vector3(0, 0.375, 0), Vector3(0.9, 0.75, 0.9), _table_material)
+	_add_decor_cylinder(at + Vector3(0, 0.79, 0), 0.09, 0.08, _iron_material)
+	_add_decor_cylinder(at + Vector3(0, 0.95, 0), 0.12, 0.26, _lantern_glass_material)
+	var light := FlickerLight.new()
+	light.base_energy = 1.1
+	light.light_color = Color(1.0, 0.78, 0.45)
+	light.omni_range = 8.0
+	light.position = at + Vector3(0, 1.1, 0)
+	_generated_root.add_child(light)
+
+
 func _spawn_interior_atmosphere() -> void:
 	for z in GRID_SIZE.y:
 		for x in GRID_SIZE.x:
 			var cell := Vector2i(x, z)
 			var center := get_room_center(cell)
 
-			# Swinging ceiling lamp (offset in the parlor so it clears the
-			# clock and mirror B) and drifting dust motes.
-			var lamp := SwingingLamp.new()
-			var lamp_offset := Vector3(1.8, 2.95, 1.8) if cell == _clock_cell else Vector3(0, 2.95, 0)
-			lamp.position = center + lamp_offset
-			_generated_root.add_child(lamp)
+			# Side table with a glowing oil lamp in the north-west corner
+			# (clear of the clock's SW spot, wall shelves, and — at lamp
+			# height — every laser line), plus drifting dust motes.
+			_add_table_lamp(center + Vector3(-3.5, 0, -3.4))
 			_add_particles(center + Vector3(0, 1.6, 0), 20, Vector3(8, 2.4, 8),
 				0.02, 0.1, Vector3.ZERO, 0.012, Color(1, 0.95, 0.8), 0.22, 6.0)
 
