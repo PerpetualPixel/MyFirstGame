@@ -1,0 +1,38 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/grabbable.gd" id="1_grabbable"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_steel"]
+albedo_color = Color(0.62, 0.65, 0.7, 1)
+metallic = 0.85
+roughness = 0.3
+
+[sub_resource type="BoxMesh" id="BoxMesh_handle"]
+material = SubResource("StandardMaterial3D_steel")
+size = Vector3(0.36, 0.055, 0.055)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_head"]
+material = SubResource("StandardMaterial3D_steel")
+top_radius = 0.08
+bottom_radius = 0.08
+height = 0.06
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_wrench"]
+size = Vector3(0.5, 0.12, 0.18)
+
+[node name="SmallWrench" type="RigidBody3D" groups=["wrenches", "small_wrenches"]]
+script = ExtResource("1_grabbable")
+display_name = "Small Wrench"
+prompt_height = 0.7
+
+[node name="Handle" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, 0)
+mesh = SubResource("BoxMesh_handle")
+
+[node name="Head" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.2, 0.06, 0)
+mesh = SubResource("CylinderMesh_head")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.02, 0.06, 0)
+shape = SubResource("BoxShape3D_wrench")

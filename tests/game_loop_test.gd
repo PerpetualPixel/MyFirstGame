@@ -4,8 +4,10 @@ extends SceneTree
 ## timer) -> keypad PIN opens the front doors (code from the junk-lot
 ## notebook) -> free-angle mirror swivel & detent snap -> clockwork
 ## gear puzzle (wrong gear fails, correct set runs the clock and releases
-## the wrench) -> valves (bare hands rejected, decay, sync-lock) -> laser
-## maze -> Will to the porch exit -> WIN. Plus pause menu checks.
+## the Brass Wrench) -> hydraulic press (fittings sequenced behind the
+## Small/Brass wrenches, then five signed-PSI toggle valves matched to a
+## target) -> the pressure lock frees the Heavy Battery -> laser maze ->
+## Will to the porch exit -> WIN. Plus pause menu checks.
 ## Run: godot --headless --path . --script res://tests/game_loop_test.gd
 
 func _initialize() -> void:
@@ -30,17 +32,27 @@ func _run() -> void:
 	var gm: GameManager = main.get_node("GameManager")
 	var pause_menu: PauseMenu = main.get_node("PauseMenu")
 	var mirrors := _find_all(main, "RotatingMirror")
-	var valves := _find_all(main, "SteamValve")
+	var machines := _find_all(main, "PressurePuzzleManager")
+	var gates := _find_all(main, "HydraulicDoor")
 	var vault_doors := _find_all(main, "VaultDoor")
 	var hinged := _find_all(main, "Door")
 	var breakers := _find_all(main, "BreakerBox")
 	var clocks := _find_all(main, "ClockworkMechanism")
 	var gears := get_nodes_in_group("clock_gears")
-	print("found: %d mirrors, %d valves, %d vault doors, %d hinged, %d breakers, %d clocks, %d gears" % [
-		mirrors.size(), valves.size(), vault_doors.size(), hinged.size(), breakers.size(), clocks.size(), gears.size()])
-	if mirrors.size() != route["mirrors"].size() + 1 or valves.size() != 2 or vault_doors.size() != 1 \
-			or breakers.size() != 1 or clocks.size() != 1 or gears.size() != 3 or hinged.size() < 5:
+	print("found: %d mirrors, %d presses, %d gates, %d vault doors, %d hinged, %d breakers, %d clocks, %d gears" % [
+		mirrors.size(), machines.size(), gates.size(), vault_doors.size(), hinged.size(), breakers.size(), clocks.size(), gears.size()])
+	if mirrors.size() != route["mirrors"].size() + 1 or machines.size() != 1 or gates.size() != 1 \
+			or vault_doors.size() != 1 or breakers.size() != 1 or clocks.size() != 1 \
+			or gears.size() != 3 or hinged.size() < 5:
 		print("TEST FAIL: unexpected element counts")
+		quit(1)
+		return
+	var machine: PressurePuzzleManager = machines[0]
+	var pressure_gate: HydraulicDoor = gates[0]
+	if machine.valves.size() != 5 or machine.small_points.size() < 1 or machine.small_points.size() > 3 \
+			or machine.big_points.size() < 1 or machine.big_points.size() > 2:
+		print("TEST FAIL: press built %d valves, %d small, %d big fittings" % [
+			machine.valves.size(), machine.small_points.size(), machine.big_points.size()])
 		quit(1)
 		return
 	var vault_door: VaultDoor = vault_doors[0]
@@ -282,6 +294,128 @@ func _run() -> void:
 	pause_menu.resume()
 	await process_frame
 
+	# --- Hydraulic press: phase gating, wrench checks, PSI toggle math ---
+	var wrong_uses := [0]
+	machine.wrong_item_used.connect(func(_p: TighteningPoint, _by: Node3D) -> void: wrong_uses[0] += 1)
+	# Valves are sealed until every fitting is torqued.
+	machine.valves[0].interact(player)
+	if machine.valves[0].is_on:
+		print("TEST FAIL: valve toggled before the fittings were tightened")
+		quit(1)
+		return
+	# Small fittings refuse bare hands.
+	machine.small_points[0].interact(player)
+	if machine.small_points[0].is_tight:
+		print("TEST FAIL: fitting tightened without a wrench")
+		quit(1)
+		return
+	# Fetch the garage's Small Wrench.
+	var small_wrench: Grabbable = get_nodes_in_group("small_wrenches")[0]
+	player.teleport(small_wrench.global_position + Vector3(0, 0, 1.0))
+	for i in 10:
+		await physics_frame
+	player.pick_up(small_wrench)
+	if not player.inventory.has(small_wrench):
+		print("TEST FAIL: could not pack the Small Wrench")
+		quit(1)
+		return
+	# Big fittings are still phase-locked while small ones remain loose.
+	machine.big_points[0].interact(player)
+	if machine.big_points[0].is_tight:
+		print("TEST FAIL: big fitting accepted work before its phase")
+		quit(1)
+		return
+	for point in machine.small_points:
+		point.interact(player)
+	for i in 60:
+		await physics_frame
+	if machine.phase != PressurePuzzleManager.Phase.BIG_FITTINGS:
+		print("TEST FAIL: press did not advance after the small fittings")
+		quit(1)
+		return
+	# Big fitting with only the small wrench -> wrong-item event, no turn.
+	machine.big_points[0].interact(player)
+	if machine.big_points[0].is_tight or wrong_uses[0] == 0:
+		print("TEST FAIL: big fitting accepted the small wrench (wrong_uses=%d)" % wrong_uses[0])
+		quit(1)
+		return
+	# The Brass Wrench the clock released is the big one.
+	player.teleport(wrench.global_position + Vector3(0, 0, 1.0))
+	for i in 10:
+		await physics_frame
+	player.pick_up(wrench)
+	if not player.inventory.has(wrench):
+		print("TEST FAIL: could not pack the released Brass Wrench")
+		quit(1)
+		return
+	for point in machine.big_points:
+		point.interact(player)
+	for i in 60:
+		await physics_frame
+	if machine.phase != PressurePuzzleManager.Phase.VALVES:
+		print("TEST FAIL: press did not open the valve phase")
+		quit(1)
+		return
+	# Toggle math: opening adds the signed PSI, closing removes it. Probe
+	# with a valve that is NOT a one-valve solution, else the press solves
+	# and locks mid-check.
+	var probe: PressureValve = null
+	for v in machine.valves:
+		if machine.base_psi + v.pressure_value != machine.target_psi:
+			probe = v
+			break
+	probe.interact(player)
+	if machine.current_psi != machine.base_psi + probe.pressure_value:
+		print("TEST FAIL: PSI after opening the probe valve: %d" % machine.current_psi)
+		quit(1)
+		return
+	probe.interact(player)
+	if machine.current_psi != machine.base_psi:
+		print("TEST FAIL: PSI did not return to base after closing")
+		quit(1)
+		return
+	# Solve it the way a player would: find a combination hitting the
+	# target and flip exactly those valves open.
+	var solution_mask := -1
+	for mask in range(1, 32):
+		var total := machine.base_psi
+		for i in 5:
+			if mask & (1 << i):
+				total += machine.valves[i].pressure_value
+		if total == machine.target_psi:
+			solution_mask = mask
+			break
+	if solution_mask < 0:
+		print("TEST FAIL: no valve combination reaches the target PSI")
+		quit(1)
+		return
+	for i in 5:
+		var want := (solution_mask & (1 << i)) != 0
+		if machine.valves[i].is_on != want:
+			machine.valves[i].interact(player)
+	if not machine.solved:
+		print("TEST FAIL: press not solved at target PSI (%d/%d)" % [machine.current_psi, machine.target_psi])
+		quit(1)
+		return
+	for i in 120:
+		await physics_frame
+	if not pressure_gate.is_open:
+		print("TEST FAIL: hydraulic gate did not vent on solve")
+		quit(1)
+		return
+	if not (small_wrench.spent and wrench.spent):
+		print("TEST FAIL: wrenches not marked spent after the solve")
+		quit(1)
+		return
+	# The locked machine must ignore further pokes.
+	var psi_locked: int = machine.current_psi
+	machine.valves[0].interact(player)
+	if machine.current_psi != psi_locked:
+		print("TEST FAIL: solved press still accepts valve toggles")
+		quit(1)
+		return
+	print("hydraulic press three-phase puzzle OK")
+
 	# --- Laser maze: dead until the Heavy Battery is cradled ---
 	for door in hinged:
 		door.set_open(true)
@@ -301,7 +435,8 @@ func _run() -> void:
 		return
 	var cradle: BatterySocket = emitter.get_node("Housing")
 	cradle.interact(player)
-	if not emitter.powered or not player.inventory.is_empty():
+	# The pack still holds both (spent) wrenches; only the battery leaves.
+	if not emitter.powered or player.inventory.has(battery):
 		print("TEST FAIL: battery install did not power the emitter")
 		quit(1)
 		return
@@ -329,43 +464,11 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# --- Valves: bare hands rejected, decay, then sync-lock ---
-	var valve_a: SteamValve = valves[0]
-	var valve_b: SteamValve = valves[1]
-	valve_a.interact(player)
-	if valve_a.activated:
-		print("TEST FAIL: valve turned without the wrench")
-		quit(1)
-		return
-	player.teleport(wrench.global_position + Vector3(0, 0, 1.0))
-	for i in 10:
-		await physics_frame
-	player.pick_up(wrench)
-	if not player.inventory.has(wrench):
-		print("TEST FAIL: could not pack the released wrench")
-		quit(1)
-		return
-	valve_a.decay_time = 1.0
-	valve_a.interact(player)
-	for i in 160:
-		await physics_frame
-	if valve_a.activated:
-		print("TEST FAIL: lone valve did not decay and reset")
-		quit(1)
-		return
-	print("valve decay/reset OK")
-	valve_a.decay_time = 60.0
-	valve_b.decay_time = 60.0
-	valve_a.interact(player)
-	valve_b.interact(player)
+	# Light + hydraulics both done: the vault gate must stand open.
 	for i in 120:
 		await physics_frame
-	if not (valve_a.locked_open and valve_b.locked_open and vault_door.is_open):
-		print("TEST FAIL: valves/vault door state wrong after sync")
-		quit(1)
-		return
-	if not wrench.spent:
-		print("TEST FAIL: wrench not marked spent after valve sync")
+	if not vault_door.is_open:
+		print("TEST FAIL: vault gate closed with light + hydraulics done")
 		quit(1)
 		return
 

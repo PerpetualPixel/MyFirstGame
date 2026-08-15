@@ -34,10 +34,10 @@ var time_left: float
 var _breaker_done := false
 var _clock_done := false
 var _gears_placed := 0
-var _wrench_found := false
+var _small_wrench_found := false
+var _big_wrench_found := false
 var _light_done := false
-var _valves_done := 0
-var _valves: Array = []
+var _pressure_done := false
 var _exit_zones: Array = []
 var _last_timer_text := ""
 var _local_player: Player
@@ -57,8 +57,10 @@ func _ready() -> void:
 	_mansion.puzzle_solved.connect(_on_light_puzzle_solved)
 	for breaker in get_tree().get_nodes_in_group("power_breakers"):
 		breaker.powered.connect(_on_breaker_powered)
-	for wrench in get_tree().get_nodes_in_group("wrenches"):
-		wrench.grabbed.connect(_on_wrench_grabbed)
+	for wrench in get_tree().get_nodes_in_group("small_wrenches"):
+		wrench.grabbed.connect(_on_small_wrench_grabbed)
+	for wrench in get_tree().get_nodes_in_group("big_wrenches"):
+		wrench.grabbed.connect(_on_big_wrench_grabbed)
 	for clock in get_tree().get_nodes_in_group("clockworks"):
 		clock.gear_inserted.connect(_on_gears_changed)
 		clock.clock_completed.connect(_on_clock_completed)
@@ -66,10 +68,8 @@ func _ready() -> void:
 		vault.opened.connect(func() -> void: show_banner("VAULT GATE UNLOCKED!"))
 	for will in get_tree().get_nodes_in_group("will_items"):
 		will.grabbed.connect(_on_will_grabbed)
-	_valves = get_tree().get_nodes_in_group("steam_valves")
-	for valve in _valves:
-		valve.valve_activated.connect(_on_valves_changed)
-		valve.valve_reset.connect(_on_valves_changed)
+	for press in get_tree().get_nodes_in_group("pressure_puzzles"):
+		press.puzzle_solved.connect(_on_pressure_solved)
 	_exit_zones = get_tree().get_nodes_in_group("exit_zones")
 
 	_timer_label.text = _format_time(time_left)
@@ -222,8 +222,13 @@ func _on_breaker_powered() -> void:
 	_refresh_objectives()
 
 
-func _on_wrench_grabbed(_by: Node3D) -> void:
-	_wrench_found = true
+func _on_small_wrench_grabbed(_by: Node3D) -> void:
+	_small_wrench_found = true
+	_refresh_objectives()
+
+
+func _on_big_wrench_grabbed(_by: Node3D) -> void:
+	_big_wrench_found = true
 	_refresh_objectives()
 
 
@@ -247,11 +252,9 @@ func _on_light_puzzle_solved() -> void:
 	_refresh_objectives()
 
 
-func _on_valves_changed() -> void:
-	_valves_done = 0
-	for valve in _valves:
-		if valve.activated:
-			_valves_done += 1
+func _on_pressure_solved() -> void:
+	_pressure_done = true
+	show_banner("HYDRAULIC PRESSURE BALANCED!")
 	_refresh_objectives()
 
 
@@ -318,17 +321,17 @@ func _lose() -> void:
 
 func _refresh_objectives() -> void:
 	var done_color := Color(0.55, 1.0, 0.65)
-	var valves_ok := _valves.size() > 0 and _valves_done >= _valves.size()
+	var wrenches_ok := _small_wrench_found and _big_wrench_found
 	var will_ok := state == State.WON
 
 	_obj_breaker.text = "%s Restore Power" % _checkbox(_breaker_done)
 	_obj_breaker.modulate = done_color if _breaker_done else Color.WHITE
 	_obj_clock.text = "%s Restore the Grandfather Clock" % _checkbox(_clock_done)
 	_obj_clock.modulate = done_color if _clock_done else Color.WHITE
-	_obj_wrench.text = "%s Find the Brass Wrench" % _checkbox(_wrench_found)
-	_obj_wrench.modulate = done_color if _wrench_found else Color.WHITE
-	_obj_steam.text = "%s Synchronize Steam Pressure" % _checkbox(valves_ok)
-	_obj_steam.modulate = done_color if valves_ok else Color.WHITE
+	_obj_wrench.text = "%s Gather the Two Wrenches" % _checkbox(wrenches_ok)
+	_obj_wrench.modulate = done_color if wrenches_ok else Color.WHITE
+	_obj_steam.text = "%s Balance the Hydraulic Press" % _checkbox(_pressure_done)
+	_obj_steam.modulate = done_color if _pressure_done else Color.WHITE
 	_obj_light.text = "%s Align Laser Circuit" % _checkbox(_light_done)
 	_obj_light.modulate = done_color if _light_done else Color.WHITE
 	_obj_will.text = "%s Retrieve Will & Escape" % _checkbox(will_ok)

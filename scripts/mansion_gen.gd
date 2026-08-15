@@ -5,9 +5,9 @@ extends Node3D
 ## Front Porch, and a moonlit 60x60 walled yard with gate, trees, and
 ## driveway. A randomized spanning tree carved from the Foyer (excluding
 ## the Vault Study) guarantees reachability; the vault's only entrance is
-## the gate-guarded doorway. Spawns all puzzles (laser mirror maze, steam
-## valves, breaker box, grandfather clock), hinged doors, fog-of-war
-## shrouds, furniture, and ambient atmosphere.
+## the gate-guarded doorway. Spawns all puzzles (laser mirror maze, the
+## hydraulic press, breaker box, grandfather clock), hinged doors,
+## fog-of-war shrouds, furniture, and ambient atmosphere.
 ## Grid convention: x grows east, y (grid) grows south (+Z in world).
 
 signal generated
@@ -21,7 +21,7 @@ const PARLOR_CELL := Vector2i(2, 0)         ## Fireplace parlor.
 const LIGHT_EMITTER_SCENE := preload("res://scenes/Puzzles/LightEmitter.tscn")
 const ROTATING_MIRROR_SCENE := preload("res://scenes/Puzzles/RotatingMirror.tscn")
 const LIGHT_RECEIVER_SCENE := preload("res://scenes/Puzzles/LightReceiver.tscn")
-const STEAM_VALVE_SCENE := preload("res://scenes/Puzzles/SteamValve.tscn")
+const SMALL_WRENCH_SCENE := preload("res://scenes/SmallWrench.tscn")
 const BREAKER_BOX_SCENE := preload("res://scenes/Puzzles/BreakerBox.tscn")
 const VAULT_DOOR_SCENE := preload("res://scenes/VaultDoor.tscn")
 const WILL_ITEM_SCENE := preload("res://scenes/WillItem.tscn")
@@ -79,8 +79,9 @@ const ROUTE_VARIANTS := [
 		"doors": [[Vector2i(1, 2), Vector2i(1, 1)]],
 	},
 ]
-## Adjacent room pairs eligible to host the two steam valves (the pair's
-## connecting door is forced open so the 25 s sync sprint stays fair).
+## Adjacent room pairs eligible to host the hydraulic press and, next
+## door, the Heavy Battery's pressure-locked cage (the pair's connecting
+## door is forced open so the reward is visible from the machine room).
 const VALVE_PAIR_OPTIONS := [
 	[Vector2i(2, 1), Vector2i(2, 2)], [Vector2i(0, 1), Vector2i(0, 2)],
 	[Vector2i(2, 0), Vector2i(2, 1)], [Vector2i(0, 0), Vector2i(0, 1)],
@@ -300,8 +301,8 @@ func _carve_doors() -> void:
 				if not _doors.has(key) and _rng.randf() < extra_door_chance:
 					_doors[key] = true
 
-	# Force this run's route doors, the vault doorway, and the valve pair's
-	# connecting door open, whatever the random rolls decided.
+	# Force this run's route doors, the vault doorway, and the hydraulic
+	# pair's connecting door open, whatever the random rolls decided.
 	var forced: Array = []
 	forced.append_array(active_route["doors"])
 	forced.append([Vector2i(1, 1), VAULT_STUDY_CELL])
@@ -461,14 +462,11 @@ func _spawn_puzzle() -> void:
 	emitter.rotation.y = deg_to_rad(active_route.get("emitter_yaw", 0.0))
 	_generated_root.add_child(emitter)
 
-	# The emitter starts dead: its Heavy Battery hides in a seeded side
-	# room and must be carried to the cradle before the laser fires.
+	# The emitter starts dead: its Heavy Battery waits inside the hydraulic
+	# press's pressure-locked cage (spawned with the press further down)
+	# and must be carried to the cradle before the laser fires.
 	var battery := BIG_BATTERY_SCENE.instantiate() as Grabbable
 	battery.name = "HeavyBattery"
-	var battery_options: Array = DECOY_CELL_OPTIONS.filter(
-		func(cell: Vector2i) -> bool: return cell != active_route["maze_cell"])
-	var battery_cell: Vector2i = battery_options[_rng.randi_range(0, battery_options.size() - 1)]
-	battery.position = get_room_center(battery_cell) + Vector3(-2.2, 0.4, 2.2)
 	_generated_root.add_child(battery)
 
 	# Route mirrors at free random 15-degree detents (closed doors block
@@ -505,14 +503,35 @@ func _spawn_puzzle() -> void:
 	_generated_root.add_child(door)
 	receiver.puzzle_completed.connect(door.on_light_puzzle_completed)
 
-	door.valves_required = _valve_cells.size()
-	for i in _valve_cells.size():
-		var valve := STEAM_VALVE_SCENE.instantiate() as SteamValve
-		valve.name = "Valve_%d" % i
-		valve.position = get_room_center(_valve_cells[i]) + Vector3(2.0, 0, 2.0)
-		_generated_root.add_child(valve)
-		valve.valve_activated.connect(door.on_valve_activated)
-		valve.valve_reset.connect(door.on_valve_reset)
+	# Hydraulic press (three-phase pressure puzzle) in the first machinery
+	# room. Counts, PSI values, and the target are seeded so every co-op
+	# peer builds an identical machine with identical node paths.
+	var machine := PressurePuzzleManager.new()
+	machine.name = "PressureMachine"
+	machine.small_point_count = _rng.randi_range(1, 3)
+	machine.big_point_count = _rng.randi_range(1, 2)
+	var pressures := _roll_valve_pressures()
+	machine.valve_pressures = pressures
+	machine.target_psi = _roll_target_psi(pressures)
+	machine.position = get_room_center(_valve_cells[0]) + Vector3(2.2, 0, 2.4)
+	machine.rotation.y = deg_to_rad(225.0)  # front faces the room center
+	_generated_root.add_child(machine)
+	# The vault gate's right-hand lamp now tracks the hydraulics.
+	machine.puzzle_solved.connect(door.on_hydraulics_ready)
+
+	# Battery cage flush in the partner room's NE corner: three
+	# camera-fading walls, sealed by the hydraulic gate until the press
+	# balances. The Heavy Battery sits inside.
+	var cage := get_room_center(_valve_cells[1]) + Vector3(3.55, 0, -3.55)
+	_add_fade_wall(cage + Vector3(0, 1.15, -1.19), Vector3(2.56, 2.3, 0.18))
+	_add_fade_wall(cage + Vector3(-1.19, 1.15, 0), Vector3(0.18, 2.3, 2.2))
+	_add_fade_wall(cage + Vector3(1.19, 1.15, 0), Vector3(0.18, 2.3, 2.2))
+	var hydraulic_gate := HydraulicDoor.new()
+	hydraulic_gate.name = "HydraulicGate"
+	hydraulic_gate.position = cage + Vector3(0, 0, 1.1)
+	_generated_root.add_child(hydraulic_gate)
+	machine.puzzle_solved.connect(hydraulic_gate.activate)
+	battery.position = cage + Vector3(0, 0.4, -0.25)
 
 	# Grandfather clock in this run's chosen room; the Brass Wrench is
 	# stashed in its compartment until the gear puzzle runs the pendulum.
@@ -550,6 +569,41 @@ func _spawn_puzzle() -> void:
 	_generated_root.add_child(will)
 
 	_build_exit_zone()
+
+
+## Five signed PSI contributions for the press's valves: seeded shuffled
+## magnitudes, exactly two flipped negative — so every run needs genuine
+## subset arithmetic, not just "open everything".
+func _roll_valve_pressures() -> Array[int]:
+	var pool: Array[int] = [5, 10, 15, 20, 25, 30, 40]
+	for i in range(pool.size() - 1, 0, -1):
+		var j := _rng.randi_range(0, i)
+		var tmp := pool[i]
+		pool[i] = pool[j]
+		pool[j] = tmp
+	var pressures: Array[int] = []
+	for i in 5:
+		pressures.append(pool[i])
+	var flip_a := _rng.randi_range(0, 4)
+	var flip_b := (flip_a + 1 + _rng.randi_range(0, 3)) % 5
+	pressures[flip_a] = -pressures[flip_a]
+	pressures[flip_b] = -pressures[flip_b]
+	return pressures
+
+
+## Target PSI = the sum of a seeded non-empty valve subset, so at least
+## one solution always exists. Rerolled while it equals the base PSI —
+## the gauge must never start on the answer.
+func _roll_target_psi(pressures: Array[int]) -> int:
+	while true:
+		var mask := _rng.randi_range(1, 31)
+		var total := 0
+		for i in 5:
+			if mask & (1 << i):
+				total += pressures[i]
+		if total != 0:
+			return total
+	return 0  # unreachable; single-valve masks are never zero
 
 
 func _spawn_gear(teeth: int, label: String, radius: float, at: Vector3, node_name: String) -> void:
@@ -660,8 +714,11 @@ func _spawn_props() -> void:
 				continue
 			var center := get_room_center(cell)
 			var side := 3.5 if _rng.randf() < 0.5 else -3.5
+			if _valve_cells.size() > 1 and cell == _valve_cells[1]:
+				side = -3.5  # keep the battery cage's NE corner clear
 			_add_prop(center + Vector3(side, 1.1, -4.25), Vector3(1.8, 2.2, 0.45), _shelf_material)
-			if cell != _clock_cell:  # keep the clock's corner clear
+			# Keep the clock's, the press's, and the cage's corners clear.
+			if cell != _clock_cell and not cell in _valve_cells:
 				for spot in crate_spots:
 					if _rng.randf() < 0.6:
 						_add_prop(center + spot, Vector3(0.8, 0.8, 0.8), _crate_material)
@@ -1077,6 +1134,19 @@ func _spawn_garage() -> void:
 	]
 	garage_fuse.position = fuse_spots[_rng.randi_range(0, fuse_spots.size() - 1)]
 	_generated_root.add_child(garage_fuse)
+
+	# The Small Wrench — first phase of the hydraulic press — lives in the
+	# workshop, at one of several seeded spots around the bench.
+	var small_wrench := SMALL_WRENCH_SCENE.instantiate() as Grabbable
+	small_wrench.name = "SmallWrench"
+	var small_wrench_spots: Array[Vector3] = [
+		c + Vector3(-2.4, 0.95, -2.4),   # west end of the workbench
+		c + Vector3(-0.8, 0.95, -2.5),   # east end of the workbench
+		c + Vector3(1.2, 0.1, -2.2),     # floor between bench and crate
+	]
+	small_wrench.position = small_wrench_spots[_rng.randi_range(0, small_wrench_spots.size() - 1)]
+	small_wrench.rotation.y = _rng.randf_range(0.0, TAU)
+	_generated_root.add_child(small_wrench)
 
 	# Ledger notebook in the trash out back — it records the door code.
 	var notebook := NOTEBOOK_SCENE.instantiate() as NotebookPickup
