@@ -43,7 +43,7 @@ var _push_offset := Vector3.ZERO
 var _push_sync_accum := 0.0
 ## Hauling a full-height mirror is slow work.
 @export var push_speed_factor: float = 0.55
-var _step_accum := 0.9
+var _step_accum := 0.6
 var _last_mouse_x := 0.0
 var _fade_walls: Array = []
 var _wall_blocking := {}
@@ -296,6 +296,7 @@ func _physics_process(delta: float) -> void:
 	# the walk animation runs locally, driven by the replicated speed.
 	if not is_local_player():
 		_animate_visual(delta)
+		_update_footsteps(delta)
 		return
 
 	if not is_on_floor():
@@ -365,19 +366,117 @@ func _update_camera_shake(delta: float) -> void:
 		_camera.position = _camera_base_pos
 
 
-## Stride-timed footsteps; stone on the porch/yard, hardwood indoors.
+## Footsteps land exactly when the animated feet do: each frame the two
+## foot bones' heights are read off the skeleton, and a step fires the
+## instant a foot comes down onto its floor level (adaptive running
+## minimum + hysteresis, so any rig/scale works). Falls back to a
+## stride-length counter when the model has no skeleton. Surface comes
+## from where the player stands (see _surface_at). Runs for remote
+## replicas too, so a co-op partner's steps are heard.
 func _update_footsteps(delta: float) -> void:
-	if not is_on_floor():
+	var speed := Vector2(velocity.x, velocity.z).length() if is_local_player() else net_speed
+	if is_local_player() and not is_on_floor():
 		return
-	var speed := Vector2(velocity.x, velocity.z).length()
-	if speed < 0.5:
-		_step_accum = 0.9  # primed so the first step lands immediately
+	var moving := speed > 0.3
+	if _foot_bones.is_empty():
+		_find_foot_bones()
+	if _foot_skeleton != null and not _foot_bones.is_empty():
+		for i in _foot_bones.size():
+			var world := _foot_skeleton.global_transform * _foot_skeleton.get_bone_global_pose(_foot_bones[i]).origin
+			var h := world.y - global_position.y
+			# Track each foot's floor level; relax slowly so drift recovers.
+			if h < _foot_floor[i]:
+				_foot_floor[i] = h
+			else:
+				_foot_floor[i] = minf(_foot_floor[i] + delta * 0.03, h)
+			# The walk cycle only lifts a foot a few cm on this rig, so the
+			# bands are tight: planted within 2 cm of its floor, re-armed
+			# once it has cleared 4.5 cm.
+			var down := h <= _foot_floor[i] + 0.02
+			var lifted := h > _foot_floor[i] + 0.045
+			if down and not _foot_down[i]:
+				if moving:
+					_play_footstep(i, speed)
+				_foot_down[i] = true
+			elif lifted:
+				_foot_down[i] = false
+		return
+	# No skeleton: cadence from distance travelled (~0.75 m per step).
+	if not moving:
+		_step_accum = 0.6
 		return
 	_step_accum += speed * delta
-	if _step_accum >= 1.5:
+	if _step_accum >= 0.75:
 		_step_accum = 0.0
-		var sound := "footstep_stone" if global_position.z > 14.9 else "footstep_wood"
-		AudioSynthesizer.play_at(sound, global_position, -16.0)
+		_step_parity = 1 - _step_parity
+		_play_footstep(_step_parity, speed)
+
+
+## Running count of footfalls fired (tests read this).
+var footsteps_played := 0
+var _foot_skeleton: Skeleton3D
+var _foot_bones: Array[int] = []
+var _foot_floor: Array[float] = [INF, INF]
+var _foot_down: Array[bool] = [false, false]
+var _step_parity := 0
+
+
+func _find_foot_bones() -> void:
+	var stack: Array = [_visual]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node is Skeleton3D:
+			var skel := node as Skeleton3D
+			var left := -1
+			var right := -1
+			for b in skel.get_bone_count():
+				var lower := skel.get_bone_name(b).to_lower()
+				if left < 0 and lower.ends_with("leftfoot"):
+					left = b
+				elif right < 0 and lower.ends_with("rightfoot"):
+					right = b
+			if left >= 0 and right >= 0:
+				_foot_skeleton = skel
+				_foot_bones = [left, right]
+				return
+		stack.append_array(node.get_children())
+
+
+## One footfall: surface-matched sample, one of three variants so no two
+## steps are identical, left/right a hair apart in pitch, quieter at a
+## shuffle than a stride.
+func _play_footstep(foot: int, speed: float) -> void:
+	footsteps_played += 1
+	var surface := _surface_at(global_position)
+	var variant := randi_range(0, 2)
+	var stride := clampf(speed / max_speed, 0.0, 1.0)
+	var volume := -20.0 + 7.0 * stride
+	var pitch := 0.97 if foot == 0 else 1.03
+	# Indoors the steps ring down the halls; outside they play dry.
+	var outdoors := surface != "wood"
+	AudioSynthesizer.play_at("step_%s_%d" % [surface, variant], global_position, volume, pitch, outdoors)
+
+
+## What the player is standing on, from the estate's fixed layout: the
+## mansion floors are hardwood; the porch slab, cobble walkway, garage
+## slab and its spur are stone; the driveway is gravel; the rest of the
+## grounds are lawn.
+func _surface_at(p: Vector3) -> String:
+	if absf(p.x) <= 15.2 and absf(p.z) <= 15.2:
+		return "wood"
+	if absf(p.x) <= 6.0 and p.z > 14.8 and p.z < 25.4:
+		return "stone"      # front porch slab
+	if absf(p.x) <= 1.3 and p.z >= 25.4 and p.z <= 33.2:
+		return "stone"      # cobble walkway to the gate
+	if p.x >= 6.75 and p.x <= 12.25 and p.z >= 24.25 and p.z <= 32.75:
+		return "gravel"     # driveway
+	if p.x >= 18.8 and p.x <= 26.2 and p.z >= 17.3 and p.z <= 23.7:
+		return "stone"      # garage slab
+	if p.x >= 15.1 and p.x <= 19.5 and p.z >= 19.3 and p.z <= 21.7:
+		return "stone"      # gravel spur is laid cobble
+	if p.x >= 15.6 and p.x <= 26.6 and p.z >= 17.5 and p.z <= 23.5:
+		return "stone"      # patio pad and side-door approach
+	return "grass"
 
 
 ## Skeletal animations when the asset has them; otherwise a procedural

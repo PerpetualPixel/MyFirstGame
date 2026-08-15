@@ -22,8 +22,13 @@ func _ready() -> void:
 	_streams["tick"] = _gen_tick()
 	_streams["chime"] = _gen_chime()
 	_streams["steam"] = _gen_steam()
-	_streams["footstep_wood"] = _gen_footstep(260.0, 0.10)
-	_streams["footstep_stone"] = _gen_footstep(900.0, 0.07)
+	# Footsteps: four surfaces x three takes each, so consecutive steps
+	# never repeat a sample.
+	for v in 3:
+		_streams["step_wood_%d" % v] = _gen_step_wood()
+		_streams["step_stone_%d" % v] = _gen_step_stone()
+		_streams["step_gravel_%d" % v] = _gen_step_gravel()
+		_streams["step_grass_%d" % v] = _gen_step_grass()
 	_streams["wind"] = _gen_wind()
 	_streams["jazz_ambient"] = _gen_jazz_ambient()
 	_streams["fire_crackle"] = _gen_fire_crackle()
@@ -54,14 +59,15 @@ static func _setup_reverb_bus() -> void:
 
 
 ## Positional one-shot; the temporary player frees itself when done.
-static func play_at(sound: String, pos: Vector3, volume_db := 0.0, pitch := 1.0) -> void:
+## `dry` skips the mansion reverb bus (outdoor sounds).
+static func play_at(sound: String, pos: Vector3, volume_db := 0.0, pitch := 1.0, dry := false) -> void:
 	if instance == null or not instance._streams.has(sound):
 		return
 	var p := AudioStreamPlayer3D.new()
 	p.stream = instance._streams[sound]
 	p.volume_db = volume_db
 	p.pitch_scale = pitch * randf_range(0.94, 1.06)
-	p.bus = "MansionReverb"
+	p.bus = "Master" if dry else "MansionReverb"
 	instance.add_child(p)
 	p.global_position = pos
 	p.play()
@@ -267,18 +273,124 @@ static func _gen_wind() -> AudioStreamWAV:
 	return _make_wav(s, true)
 
 
-## Footstep: filtered noise thump; tone selects wood vs stone character.
-static func _gen_footstep(tone_hz: float, dur: float) -> AudioStreamWAV:
-	var n := int(SAMPLE_RATE * dur)
+# --- Footsteps -----------------------------------------------------------
+# Each surface is a physically-flavored layering: a body "thud" (the heel
+# landing), a surface "voice" (a resonant filter ringing at the material's
+# character frequency), and surface texture (creak, crunch, swish).
+
+
+## Two-pole resonator: rings input noise at `freq_hz` with sharpness `r`
+## (0.9 loose .. 0.99 bell-like). Returns the filtered array.
+static func _resonate(input: PackedFloat32Array, freq_hz: float, r: float) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(input.size())
+	var w := TAU * freq_hz / SAMPLE_RATE
+	var a1 := 2.0 * r * cos(w)
+	var a2 := -r * r
+	var y1 := 0.0
+	var y2 := 0.0
+	for i in input.size():
+		var y := input[i] + a1 * y1 + a2 * y2
+		out[i] = y
+		y2 = y1
+		y1 = y
+	return out
+
+
+static func _noise_burst(n: int, decay: float, gain: float) -> PackedFloat32Array:
+	var s := PackedFloat32Array()
+	s.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		s[i] = (randf() * 2.0 - 1.0) * exp(-t * decay) * gain
+	return s
+
+
+## Hardwood floor: a hollow low knock with a soft board creak on top.
+static func _gen_step_wood() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 0.16)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var knock := _resonate(_noise_burst(n, 70.0, 0.05), randf_range(520.0, 680.0), 0.975)
+	var body := _resonate(_noise_burst(n, 40.0, 0.06), randf_range(140.0, 180.0), 0.985)
+	var creak_hz := randf_range(1500.0, 2200.0)
+	var creak_gain := 0.05 if randf() < 0.6 else 0.0
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var thud := sin(TAU * 105.0 * t) * exp(-t * 34.0) * 0.55
+		var creak := sin(TAU * creak_hz * t + 4.0 * sin(TAU * 60.0 * t)) * exp(-t * 55.0) * creak_gain
+		s[i] = thud + knock[i] * 3.0 + body[i] * 1.6 + creak
+	return _make_wav(_normalize(s, 0.8))
+
+
+## Stone / cobble / concrete: a hard, short click with a bright ring.
+static func _gen_step_stone() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 0.11)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var ring := _resonate(_noise_burst(n, 110.0, 0.04), randf_range(1900.0, 2600.0), 0.965)
+	var scrape := _noise_burst(n, 60.0, 0.12)
+	var prev := 0.0
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var hp := scrape[i] - prev  # high-pass: gritty scrape, no low mud
+		prev = scrape[i]
+		var thud := sin(TAU * 170.0 * t) * exp(-t * 60.0) * 0.35
+		s[i] = thud + ring[i] * 2.5 + hp * 1.4
+	return _make_wav(_normalize(s, 0.75))
+
+
+## Gravel: a cluster of tiny stone-on-stone ticks under a crunch.
+static func _gen_step_gravel() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 0.2)
+	var raw := PackedFloat32Array()
+	raw.resize(n)
+	var spike := 0.0
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		# Dense micro-impacts early, thinning out as the foot settles.
+		if randf() < 0.05 * exp(-t * 9.0):
+			spike = randf_range(0.5, 1.0)
+		spike *= 0.93
+		raw[i] = (randf() * 2.0 - 1.0) * (0.03 + spike) * exp(-t * 14.0)
+	var mid := _resonate(raw, randf_range(1200.0, 1700.0), 0.9)
+	var hi := _resonate(raw, randf_range(3200.0, 4200.0), 0.85)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		s[i] = mid[i] * 1.2 + hi[i] * 0.6 + raw[i] * 0.4 + sin(TAU * 130.0 * t) * exp(-t * 45.0) * 0.2
+	return _make_wav(_normalize(s, 0.75))
+
+
+## Grass / lawn: a soft brushed swish, no hard transient.
+static func _gen_step_grass() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 0.22)
 	var s := PackedFloat32Array()
 	s.resize(n)
 	var lp := 0.0
-	var cutoff := clampf(tone_hz / 4000.0, 0.05, 0.6)
+	var lp2 := 0.0
+	var cutoff := randf_range(0.18, 0.28)
 	for i in n:
 		var t := float(i) / SAMPLE_RATE
 		lp += cutoff * ((randf() * 2.0 - 1.0) - lp)
-		s[i] = lp * exp(-t * 42.0) * 0.9 + sin(TAU * tone_hz * 0.35 * t) * exp(-t * 60.0) * 0.25
-	return _make_wav(s)
+		lp2 += 0.5 * (lp - lp2)
+		var env := minf(t / 0.025, 1.0) * exp(-t * 16.0)  # brushed attack, soft tail
+		var rustle := (randf() * 2.0 - 1.0) * 0.08 * exp(-t * 30.0) if randf() < 0.3 else 0.0
+		s[i] = (lp2 * 1.6 + rustle) * env + sin(TAU * 90.0 * t) * exp(-t * 40.0) * 0.12
+	return _make_wav(_normalize(s, 0.55))
+
+
+## Scale a buffer so its loudest sample sits at `peak` (keeps takes at a
+## consistent level regardless of the random filter frequencies).
+static func _normalize(s: PackedFloat32Array, peak: float) -> PackedFloat32Array:
+	var loudest := 0.0001
+	for v in s:
+		loudest = maxf(loudest, absf(v))
+	var k := peak / loudest
+	for i in s.size():
+		s[i] *= k
+	return s
 
 
 ## Warm, mellow ambient jazz-like tone: low-pass filtered sine with slow
