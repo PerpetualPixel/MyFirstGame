@@ -1,17 +1,23 @@
 class_name ClockworkMechanism
-extends StaticBody3D
+extends Interactable
 
-## Antique grandfather clock with three empty gear sockets behind open
-## glass doors. Seat the correct gear (by engraved tooth count) in every
-## socket and the pendulum starts, the clock ticks and chimes, and the
-## lower compartment slides open to release whatever the generator stashed
-## inside (the Brass Wrench). Wrong gears simply fail to mesh: the clock
-## stays dead until the arrangement matches the engravings.
+## Ornate grandfather clock — mahogany case, gold columns, scrolled
+## crown — with three gear sockets behind the waist glass. [E] opens the
+## fullscreen ClockPanel overlay (first-person view of the gear train):
+## click a carried gear, then a socket, to seat it; click a seated gear
+## to take it back. Seat the correct gear (by engraved tooth count) in
+## every socket and the pendulum starts, the clock ticks and chimes, and
+## the rosette compartment slides open to release whatever the generator
+## stashed inside (the Brass Wrench). Wrong gears simply fail to mesh:
+## the clock stays dead until the arrangement matches the engravings.
 
 signal gear_inserted(placed: int)
 signal clock_completed
 
+const PANEL_SCENE := preload("res://scenes/Puzzles/ClockPanel.tscn")
+
 var is_running := false
+var minigame: ClockPanel
 
 var _stashed: Node3D
 var _time := 0.0
@@ -26,6 +32,17 @@ func _ready() -> void:
 	add_to_group("clockworks")
 	for socket in _sockets:
 		socket.gear_changed.connect(_on_gear_changed)
+	minigame = PANEL_SCENE.instantiate()
+	add_child(minigame)
+	minigame.setup(self)
+
+
+## RE-style: [E] always inspects; gears are seated and removed from
+## inside the overlay. It only opens on the interacting machine.
+func interact(by: Node3D) -> void:
+	if by == null or not by.has_method("is_local_player") or by.is_local_player():
+		minigame.open()
+	super.interact(by)
 
 
 ## Park an item (frozen, collision off) inside the lower cabinet until the

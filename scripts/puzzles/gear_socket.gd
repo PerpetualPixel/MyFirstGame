@@ -2,9 +2,11 @@ class_name GearSocket
 extends Interactable
 
 ## One gear socket on the grandfather clock. The Roman numeral engraved
-## above it names the tooth count it needs. [E] with gears in the pack
-## seats one (a chooser pops when carrying several); [E] on a filled
-## socket pops the gear back out — into the pack if there's room.
+## above it names the tooth count it needs. The socket is worked entirely
+## from the clock's fullscreen panel (never prompted in-world): the panel
+## calls request_seat / request_remove, which replicate to every peer.
+## The seated gear still mounts here in 3D, visible behind the waist
+## glass.
 
 signal gear_changed
 
@@ -14,50 +16,10 @@ var gear: Grabbable = null
 var locked := false
 
 
+## Never a direct [E] target — the clock case is the interactable, and
+## this body must not steal its prompt.
 func can_interact(_by: Node3D) -> bool:
-	return not locked
-
-
-func get_prompt(by: Node3D = null) -> String:
-	if gear != null:
-		return "[E] Remove Gear"
-	if by != null and by.has_method("inventory_find") and by.inventory_find("clock_gears") != null:
-		return "[E] Seat Gear"
-	return "Needs a Brass Gear"
-
-
-func interact(by: Node3D) -> void:
-	if locked:
-		return
-	if gear != null:
-		# Pop the seated gear out; prefer the interactor's pack.
-		var out := gear
-		gear = null
-		out.release()
-		if by != null and by.has_method("pick_up"):
-			by.pick_up(out)  # silently stays on the floor if the pack is full
-		AudioSynthesizer.play_at("ratchet", global_position, -6.0)
-		gear_changed.emit()
-		super.interact(by)
-		return
-
-	var candidates: Array = []
-	if by != null and by.get("inventory") != null:
-		for item in by.inventory:
-			if is_instance_valid(item) and item.is_in_group("clock_gears"):
-				candidates.append(item)
-	if candidates.is_empty():
-		super.interact(by)
-		return
-	if candidates.size() == 1:
-		request_seat(by, candidates[0])
-	elif not by.has_method("is_local_player") or by.is_local_player():
-		# Several gears in the pack: let the local player choose; the
-		# choice replicates via request_seat.
-		ItemSelectPopup.open(candidates,
-			func(chosen: Node) -> void: request_seat(by, chosen),
-			"Seat which gear?")
-	super.interact(by)
+	return false
 
 
 ## Seat `chosen` from `by`'s pack; replicates to every peer in co-op.
@@ -82,6 +44,32 @@ func _apply_seat(chosen: Node) -> void:
 	g.mount(self, Vector3(0, 0, 0.1))
 	gear = g
 	AudioSynthesizer.play_at("plug", global_position, -8.0)
+	gear_changed.emit()
+
+
+## Pop the seated gear back out into `by`'s pack (or onto the floor if
+## the pack is full); replicates to every peer in co-op.
+func request_remove(by: Node3D) -> void:
+	if NetworkSession.multiplayer_active:
+		_net_remove.rpc(by.get_path())
+	else:
+		_apply_remove(by)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _net_remove(by_path: NodePath) -> void:
+	_apply_remove(get_node_or_null(by_path))
+
+
+func _apply_remove(by: Node3D) -> void:
+	if locked or gear == null:
+		return
+	var out := gear
+	gear = null
+	out.release()
+	if by != null and by.has_method("pick_up"):
+		by.pick_up(out)  # silently stays on the floor if the pack is full
+	AudioSynthesizer.play_at("ratchet", global_position, -6.0)
 	gear_changed.emit()
 
 

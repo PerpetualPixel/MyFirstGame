@@ -73,9 +73,13 @@ text = "[E]  —  Interact (valves, breaker, doors) / Rotate Mirror"
 theme_override_font_sizes/font_size = 20
 text = "[Mouse]  —  Swivel Mirror while rotating"
 
+[node name="RotateCam" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
+theme_override_font_sizes/font_size = 20
+text = "[Q]  —  Rotate Camera 90°"
+
 [node name="Drop" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
 theme_override_font_sizes/font_size = 20
-text = "[Q]  —  Drop Carried Item"
+text = "[G]  —  Drop Carried Item"
 
 [node name="Esc" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
 theme_override_font_sizes/font_size = 20

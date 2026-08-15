@@ -54,6 +54,10 @@ static var local_instance: Player
 var _trauma := 0.0
 var _camera_base_pos := Vector3.ZERO
 var _zoom_tween: Tween
+## Accumulated 90-degree camera yaw target ([Q] swings); tweened so
+## rapid presses queue up instead of fighting each other.
+var _yaw_target := 0.0
+var _rotate_tween: Tween
 
 
 func _enter_tree() -> void:
@@ -88,10 +92,10 @@ static func shake(amount: float, at: Vector3) -> void:
 
 ## Small Resident Evil-style pack: up to 3 items ride along (hidden,
 ## frozen, parented to the player) and get used or consumed at
-## interaction sites. [Q] drops the most recently taken item.
+## interaction sites. [G] drops the most recently taken item.
 const INVENTORY_SIZE := 3
 var inventory: Array[Grabbable] = []
-## HUD slot highlighted via the 1/2/3 keys; [Q] drops it (else the
+## HUD slot highlighted via the 1/2/3 keys; [G] drops it (else the
 ## newest item). Local-machine concept — never replicated.
 var selected_slot := -1
 
@@ -104,6 +108,7 @@ func _ready() -> void:
 	# so snap it onto the player once at spawn.
 	camera_pivot.global_position = global_position
 	_camera_base_pos = _camera.position
+	_yaw_target = camera_pivot.rotation.y
 	_camera.current = is_local_player()
 	if is_local_player():
 		local_instance = self
@@ -476,7 +481,7 @@ func _process(delta: float) -> void:
 
 
 ## Floats prompt text above the nearest interactable; while carrying, a
-## "[Q] Drop" hint rides along (or floats over the held item if nothing
+## "[G] Drop" hint rides along (or floats over the held item if nothing
 ## else is in reach).
 func _update_prompt() -> void:
 	# 20 Hz is plenty for prompt tracking; skip the overlap scan otherwise.
@@ -496,7 +501,7 @@ func _update_prompt() -> void:
 		text = "[E] Use"
 		anchor = target
 	# No floating drop hint — the HUD's pack slots already show what's
-	# carried, and [Q] quietly drops the newest item. Silent
+	# carried, and [G] quietly drops the newest item. Silent
 	# interactables (empty prompt, e.g. mirrors) show nothing at all.
 	if anchor and not text.is_empty():
 		if _prompt.text != text:
@@ -539,8 +544,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return
 
+	# [Q]: swing the isometric camera a quarter turn — the scene rotates
+	# 90 degrees clockwise on screen. Movement input is camera-relative
+	# (see _physics_process), so the controls follow automatically.
+	if event.is_action_pressed("rotate_camera"):
+		_yaw_target += PI / 2.0
+		if _rotate_tween and _rotate_tween.is_running():
+			_rotate_tween.kill()
+		_rotate_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_rotate_tween.tween_property(camera_pivot, "rotation:y", _yaw_target, 0.35)
+		get_viewport().set_input_as_handled()
+		return
+
 	# [E] always interacts (valves, doors, mirrors work while carrying);
-	# [Q] is the dedicated drop key, so tools are never dropped by accident.
+	# [G] is the dedicated drop key, so tools are never dropped by accident.
 	if event.is_action_pressed("interact"):
 		var target := get_nearest_interactable()
 		if target is RotatingMirror:
@@ -678,7 +695,7 @@ func pick_up(item: Grabbable) -> void:
 	play_action("moves/pick_up")
 
 
-## [Q]: drop the most recently taken item back into the world.
+## [G]: drop the most recently taken item back into the world.
 func drop_held() -> void:
 	drop_at(inventory.size() - 1)
 

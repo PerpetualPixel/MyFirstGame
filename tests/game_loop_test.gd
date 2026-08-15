@@ -223,7 +223,7 @@ func _run() -> void:
 	print("free-angle swivel + detent snap OK")
 
 	# --- Clockwork: wrong gear fails, correct set releases the wrench ---
-	var wrench: Grabbable = get_nodes_in_group("wrenches")[0]
+	var wrench: Grabbable = get_nodes_in_group("big_wrenches")[0]
 	if wrench.collision_layer != 0 or wrench.get_parent() != clock:
 		print("TEST FAIL: wrench not stashed inside the clock")
 		quit(1)
@@ -238,16 +238,31 @@ func _run() -> void:
 	for s in sockets:
 		if s.required_teeth == 8:
 			socket8 = s
+	# Panel modal: [E] on the case opens the gear-train overlay (pausing
+	# solo); ESC steps away.
+	clock.interact(player)
+	await process_frame
+	if not clock.minigame.is_open or not paused:
+		print("TEST FAIL: clock panel did not open/pause")
+		quit(1)
+		return
+	_press_escape()
+	await process_frame
+	await process_frame
+	if clock.minigame.is_open or paused:
+		print("TEST FAIL: ESC did not close the clock panel")
+		quit(1)
+		return
 	player.teleport(gear_by_teeth[12].global_position + Vector3(0, 0, 1.0))
 	for i in 10:
 		await physics_frame
 	player.pick_up(gear_by_teeth[12])
-	socket8.interact(player)
+	socket8.request_seat(player, gear_by_teeth[12])
 	if clock.is_running or socket8.gear != gear_by_teeth[12] or not player.inventory.is_empty():
 		print("TEST FAIL: wrong-gear insertion behaved unexpectedly")
 		quit(1)
 		return
-	socket8.interact(player)  # pop it back out
+	socket8.request_remove(player)  # pop it back out (panel click path)
 	for i in 20:
 		await physics_frame
 	if socket8.gear != null:
