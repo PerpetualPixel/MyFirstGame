@@ -423,6 +423,20 @@ func _add_wall(edge_center: Vector3, along_x: bool, with_door: bool) -> void:
 		wall.add_child(hole)
 
 
+## Standalone camera-fading wall (outbuildings): same contract as the
+## mansion's room walls — CSG with its own material, in "fade_walls".
+func _add_fade_wall(at: Vector3, size: Vector3) -> void:
+	var wall := CSGBox3D.new()
+	wall.size = size
+	wall.position = at
+	wall.use_collision = true
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = WALL_COLOR
+	wall.material = mat
+	wall.add_to_group("fade_walls")
+	_generated_root.add_child(wall)
+
+
 func _add_corner_posts(parent: Node3D) -> void:
 	for gz in GRID_SIZE.y + 1:
 		for gx in GRID_SIZE.x + 1:
@@ -896,15 +910,17 @@ func _spawn_garage() -> void:
 	var c := Vector3(22.5, 0, 20.5)
 	# Concrete slab, walls, flat roof with a small overhang.
 	_add_decor_box(c + Vector3(0, 0.03, 0), Vector3(7.4, 0.1, 6.4), _stone_material)
-	_add_prop(c + Vector3(0, 1.4, -3.0), Vector3(7.0, 2.8, 0.3), _wall_material)        # north
+	# Walls join the mansion's camera-fade system (CSG + "fade_walls"),
+	# so standing behind the garage still shows the character inside.
+	_add_fade_wall(c + Vector3(0, 1.4, -3.0), Vector3(7.0, 2.8, 0.3))        # north
 	# South wall has a real vehicle opening; the rolling door fills it.
 	for wall_x in [-2.675, 2.675]:
-		_add_prop(c + Vector3(wall_x, 1.4, 3.0), Vector3(1.65, 2.8, 0.3), _wall_material)
-	_add_prop(c + Vector3(0, 2.65, 3.0), Vector3(3.7, 0.3, 0.3), _wall_material)        # lintel
-	_add_prop(c + Vector3(3.35, 1.4, 0), Vector3(0.3, 2.8, 6.3), _wall_material)        # east
-	_add_prop(c + Vector3(-3.35, 1.4, -1.85), Vector3(0.3, 2.8, 2.6), _wall_material)   # west, N of door
-	_add_prop(c + Vector3(-3.35, 1.4, 1.85), Vector3(0.3, 2.8, 2.6), _wall_material)    # west, S of door
-	_add_prop(c + Vector3(-3.35, 2.5, 0), Vector3(0.3, 0.6, 1.3), _wall_material)       # door lintel
+		_add_fade_wall(c + Vector3(wall_x, 1.4, 3.0), Vector3(1.65, 2.8, 0.3))
+	_add_fade_wall(c + Vector3(0, 2.65, 3.0), Vector3(3.7, 0.3, 0.3))        # lintel
+	_add_fade_wall(c + Vector3(3.35, 1.4, 0), Vector3(0.3, 2.8, 6.3))        # east
+	_add_fade_wall(c + Vector3(-3.35, 1.4, -1.85), Vector3(0.3, 2.8, 2.6))   # west, N of door
+	_add_fade_wall(c + Vector3(-3.35, 1.4, 1.85), Vector3(0.3, 2.8, 2.6))    # west, S of door
+	_add_fade_wall(c + Vector3(-3.35, 2.5, 0), Vector3(0.3, 0.6, 1.3))       # door lintel
 	# No solid roof — the isometric camera must see inside (the mansion is
 	# roofless for the same reason). A single exposed rafter carries the bulb.
 	_add_decor_box(c + Vector3(0, 2.86, 0), Vector3(7.2, 0.14, 0.18), _shelf_material)
@@ -939,25 +955,24 @@ func _spawn_garage() -> void:
 	roll_door.name = "GarageRollDoor"
 	roll_door.position = c + Vector3(0, 0, 3.0)
 	_generated_root.add_child(roll_door)
-	var roll_panel := MeshInstance3D.new()
-	roll_panel.mesh = _get_box_mesh(Vector3(3.7, 2.5, 0.12), _shelf_material)
+	# The panel itself is a fade wall too (CSG carries its own collision
+	# and rides the lift tween). Groove lines are CSG cuts, so the slat
+	# look survives fading.
+	var roll_panel := CSGBox3D.new()
+	roll_panel.size = Vector3(3.7, 2.5, 0.12)
 	roll_panel.position = Vector3(0, 1.25, 0)
+	roll_panel.use_collision = true
+	var roll_mat := StandardMaterial3D.new()
+	roll_mat.albedo_color = Color(0.45, 0.36, 0.25)
+	roll_panel.material = roll_mat
+	roll_panel.add_to_group("fade_walls")
 	roll_door.add_child(roll_panel)
-	for slat_y in [0.35, 0.85, 1.35, 1.85, 2.3]:
-		var slat := MeshInstance3D.new()
-		slat.mesh = _get_box_mesh(Vector3(3.7, 0.06, 0.06), _iron_material)
-		slat.position = Vector3(0, slat_y, -0.08)
-		roll_door.add_child(slat)
-	var roll_handle := MeshInstance3D.new()
-	roll_handle.mesh = _get_box_mesh(Vector3(0.5, 0.08, 0.08), _iron_material)
-	roll_handle.position = Vector3(0, 0.55, -0.11)
-	roll_door.add_child(roll_handle)
-	var roll_body := StaticBody3D.new()
-	var roll_col := CollisionShape3D.new()
-	roll_col.shape = _get_box_shape(Vector3(3.7, 2.5, 0.12))
-	roll_col.position = Vector3(0, 1.25, 0)
-	roll_body.add_child(roll_col)
-	roll_door.add_child(roll_body)
+	for slat_y in [-0.9, -0.4, 0.1, 0.6, 1.05]:
+		var groove := CSGBox3D.new()
+		groove.operation = CSGShape3D.OPERATION_SUBTRACTION
+		groove.size = Vector3(3.72, 0.03, 0.03)
+		groove.position = Vector3(0, slat_y, -0.055)
+		roll_panel.add_child(groove)
 	for rail_x in [-1.95, 1.95]:
 		_add_decor_box(c + Vector3(rail_x, 1.35, 3.12), Vector3(0.14, 2.7, 0.14), _iron_material)
 
