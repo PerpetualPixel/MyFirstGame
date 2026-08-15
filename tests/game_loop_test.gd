@@ -252,6 +252,16 @@ func _run() -> void:
 		print("TEST FAIL: clock panel did not open/pause")
 		quit(1)
 		return
+	# The panel's numerals must reflect the per-run shuffled requirements
+	# (the generator re-engraves the sockets AFTER the clock enters the
+	# tree, so a build-time snapshot lies and makes the puzzle unwinnable).
+	var numeral_for := {8: "VIII", 12: "XII", 16: "XVI"}
+	for i in sockets.size():
+		var shown: String = clock.minigame._numeral_labels[i].text
+		if shown != numeral_for[sockets[i].required_teeth]:
+			print("TEST FAIL: panel shows %s over a socket wanting %d teeth" % [shown, sockets[i].required_teeth])
+			quit(1)
+			return
 	_press_escape()
 	await process_frame
 	await process_frame
@@ -298,6 +308,19 @@ func _run() -> void:
 		await physics_frame
 	if wrench.collision_layer == 0 or wrench.get_parent() == clock:
 		print("TEST FAIL: compartment did not release the wrench")
+		quit(1)
+		return
+	# It must land out the FRONT of the case (the back stands against the
+	# room wall) and stay inside the room, not in the masonry.
+	var to_wrench := wrench.global_position - clock.global_position
+	var clock_front := clock.global_transform.basis.z
+	if to_wrench.dot(clock_front) < 0.4:
+		print("TEST FAIL: wrench dropped behind the clock (offset %s)" % to_wrench)
+		quit(1)
+		return
+	var clock_room := gen.get_room_center(gen._clock_cell)
+	if absf(wrench.global_position.x - clock_room.x) > 4.8 or absf(wrench.global_position.z - clock_room.z) > 4.8:
+		print("TEST FAIL: wrench landed outside the clock room at %s" % wrench.global_position)
 		quit(1)
 		return
 	print("clockwork gear puzzle OK")

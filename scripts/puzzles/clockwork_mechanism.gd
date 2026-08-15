@@ -88,7 +88,10 @@ func _release_stash() -> void:
 	var item := _stashed
 	_stashed = null
 	item.reparent(get_parent())
-	item.global_position = global_position - global_transform.basis.z * 0.9 + Vector3(0, 0.5, 0)
+	# Out the FRONT of the case (local +Z: face, glass, rosette door), onto
+	# the floor before the clock. The case stands against a wall, so the
+	# rear is solid masonry.
+	item.global_position = global_position + global_transform.basis.z * 0.9 + Vector3(0, 0.5, 0)
 	item.set("freeze", false)
 	item.set("collision_layer", 1)
 	item.set("collision_mask", 1)

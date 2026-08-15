@@ -28,6 +28,11 @@ var is_open := false
 ## ClockworkMechanism (duck-typed to avoid a scene<->script preload cycle).
 var _clock: Node
 var _socket_buttons: Array[Button] = []
+## Engraved numerals over each socket. Refreshed LIVE from the 3D
+## sockets, never cached: the generator shuffles the requirements (and
+## re-engraves the case) AFTER the clock enters the tree, i.e. after this
+## panel is built.
+var _numeral_labels: Array[Label] = []
 var _gear_tray: Control
 var _gear_buttons: Array[Button] = []
 var _tray_gears: Array = []
@@ -184,11 +189,22 @@ func _refresh() -> void:
 		btn.pressed.connect(_on_gear_clicked.bind(i))
 		_gear_tray.add_child(btn)
 		_gear_buttons.append(btn)
+	# Mirror the case's live engravings (they are shuffled per run).
+	for i in _numeral_labels.size():
+		_numeral_labels[i].text = str(_clock._sockets[i].get_node("Numeral").text)
 	for btn in _socket_buttons:
 		btn.queue_redraw()
+	var seated := 0
+	for socket in _clock._sockets:
+		if socket.gear != null:
+			seated += 1
 	if _clock.is_running:
 		_hint.text = "The gear train meshes — the clock lives again!"
 		_hint.modulate = Color(0.55, 1.0, 0.65)
+	elif seated == _clock._sockets.size():
+		# Every socket filled yet nothing turns: the arrangement is wrong.
+		_hint.text = "The train binds — a gear sits in the wrong socket. Match each numeral to its tooth count.  [ESC] steps away."
+		_hint.modulate = Color(1.0, 0.6, 0.5)
 	elif _selected_gear != null:
 		_hint.text = "%s selected — click a socket to seat it.  [ESC] steps away." % _selected_gear.display_name
 		_hint.modulate = Color.WHITE
@@ -255,6 +271,7 @@ func _build_face() -> void:
 		numeral.size = Vector2(120, 24)
 		numeral.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_board.add_child(numeral)
+		_numeral_labels.append(numeral)
 
 		var btn := _flat_button(pos - Vector2(60, 60), Vector2(120, 120))
 		btn.draw.connect(_draw_socket.bind(btn, i))

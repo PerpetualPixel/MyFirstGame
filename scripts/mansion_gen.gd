@@ -542,12 +542,14 @@ func _spawn_puzzle() -> void:
 	machine.puzzle_solved.connect(hydraulic_gate.activate)
 	battery.position = cage + Vector3(0, 0.4, -0.25)
 
-	# Grandfather clock in this run's chosen room; the Brass Wrench is
-	# stashed in its compartment until the gear puzzle runs the pendulum.
-	# Socket requirements are shuffled and their numerals re-engraved.
+	# Grandfather clock flush against its room's south wall (back at the
+	# wall's inner face, clear of the x -1..1 door gap), facing north into
+	# the room; the Brass Wrench is stashed in its compartment until the
+	# gear puzzle runs the pendulum. Socket requirements are shuffled and
+	# their numerals re-engraved.
 	var clock := CLOCKWORK_SCENE.instantiate() as ClockworkMechanism
 	clock.name = "Clock"
-	clock.position = get_room_center(_clock_cell) + Vector3(-3.0, 0, 3.2)
+	clock.position = get_room_center(_clock_cell) + Vector3(-3.0, 0, room_size / 2.0 - wall_thickness / 2.0 - 0.4)
 	clock.rotation.y = PI
 	_generated_root.add_child(clock)
 	var teeth_perm := [8, 12, 16]
