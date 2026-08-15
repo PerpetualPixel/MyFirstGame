@@ -69,6 +69,9 @@ func _sync_group() -> void:
 	if all_on:
 		for valve in valves:
 			valve.lock_open()
+		# Steam is synced for good — the wrench has nothing left to turn.
+		for wrench in get_tree().get_nodes_in_group("wrenches"):
+			wrench.set("spent", true)
 	elif activated and not locked_open:
 		# Co-op: only the host runs decay timers; it broadcasts the reset.
 		if not NetworkSession.multiplayer_active or multiplayer.is_server():

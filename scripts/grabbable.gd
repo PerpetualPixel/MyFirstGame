@@ -12,6 +12,11 @@ signal dropped(by: Node3D)
 ## Who is currently carrying this, or null when it's loose in the world.
 var holder: Node3D = null
 
+## True once this tool's job is done (crowbar after the pry, wrench
+## after the valves lock). The HUD crosses the item out so players know
+## it is safe to drop.
+var spent := false
+
 var _body: RigidBody3D
 var _original_layer: int
 var _original_mask: int

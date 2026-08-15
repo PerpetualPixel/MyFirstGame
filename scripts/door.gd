@@ -80,7 +80,9 @@ func get_prompt(by: Node3D = null) -> String:
 func interact(by: Node3D) -> void:
 	if locked and pry_group != "" and by != null and _held_pry_tool(by) != null:
 		# Crowbar wins: force the latch with a groan and a burst of dust.
+		# The tool's job is done — the HUD crosses it out.
 		locked = false
+		_held_pry_tool(by).set("spent", true)
 		AudioSynthesizer.play_at("ratchet", global_position, -2.0, 0.55)
 		_dust_puff(global_position + global_transform.basis.x * (panel_width / 2.0), 16)
 	if locked:

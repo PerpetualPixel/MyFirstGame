@@ -98,6 +98,10 @@ func _run() -> void:
 		print("TEST FAIL: crowbar did not pry the garage door open")
 		quit(1)
 		return
+	if not bar.spent:
+		print("TEST FAIL: crowbar not marked spent after the pry")
+		quit(1)
+		return
 	player.drop_held()
 	print("garage gating & toy crate OK")
 
@@ -358,6 +362,10 @@ func _run() -> void:
 		await physics_frame
 	if not (valve_a.locked_open and valve_b.locked_open and vault_door.is_open):
 		print("TEST FAIL: valves/vault door state wrong after sync")
+		quit(1)
+		return
+	if not wrench.spent:
+		print("TEST FAIL: wrench not marked spent after valve sync")
 		quit(1)
 		return
 

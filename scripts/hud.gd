@@ -135,7 +135,7 @@ func _refresh_inventory_bar() -> void:
 	var signature := "%d|" % selected
 	for item in items:
 		if is_instance_valid(item):
-			signature += item.name + ";"
+			signature += item.name + ("!" if item.get("spent") else "") + ";"
 	if signature == _inv_signature:
 		return
 	_inv_signature = signature
@@ -155,12 +155,15 @@ func _refresh_inventory_bar() -> void:
 			icon_tex = _fuse_icon
 		elif item.is_in_group("crowbars"):
 			icon_tex = _crowbar_icon
+		var is_spent: bool = item.get("spent") == true
 		if icon_tex != null:
 			var icon := TextureRect.new()
 			icon.texture = icon_tex
 			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			if is_spent:
+				icon.modulate = Color(1, 1, 1, 0.4)
 			_inv_slots[i].add_child(icon)
 		else:
 			var tag := Label.new()
@@ -169,9 +172,23 @@ func _refresh_inventory_bar() -> void:
 			tag.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 			tag.autowrap_mode = TextServer.AUTOWRAP_WORD
 			tag.add_theme_font_size_override("font_size", 12)
-			tag.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7))
+			tag.add_theme_color_override("font_color",
+				Color(0.6, 0.55, 0.45) if is_spent else Color(0.9, 0.85, 0.7))
 			tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			_inv_slots[i].add_child(tag)
+		if is_spent:
+			# Big red cross over the slot: this item's job is done.
+			var cross := Label.new()
+			cross.text = "✕"
+			cross.set_anchors_preset(Control.PRESET_FULL_RECT)
+			cross.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			cross.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			cross.add_theme_font_size_override("font_size", 52)
+			cross.add_theme_color_override("font_color", Color(0.9, 0.2, 0.15, 0.85))
+			cross.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+			cross.add_theme_constant_override("outline_size", 4)
+			cross.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_inv_slots[i].add_child(cross)
 
 
 # --- Notes panel ([Tab]) ---------------------------------------------------
