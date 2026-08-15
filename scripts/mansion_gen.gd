@@ -825,7 +825,8 @@ func _spawn_estate() -> void:
 		_add_decor_sphere(Vector3(fern_x, 0.55, front_z + 1.6), 0.42, _hedge_material)
 
 	# Glowing stained-glass windows with shutters on the mansion facade.
-	for wx in [-2.4, 2.4, -10.0, 10.0]:
+	# (No window at +2.4 — the front-door keypad hangs there.)
+	for wx in [-2.4, -10.0, 10.0]:
 		_add_decor_box(Vector3(wx, 1.6, front_z + 0.2), Vector3(0.9, 1.2, 0.08), _window_material)
 		_add_decor_box(Vector3(wx - 0.62, 1.6, front_z + 0.19), Vector3(0.25, 1.2, 0.06), _shelf_material)
 		_add_decor_box(Vector3(wx + 0.62, 1.6, front_z + 0.19), Vector3(0.25, 1.2, 0.06), _shelf_material)

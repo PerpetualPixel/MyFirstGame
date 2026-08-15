@@ -30,15 +30,15 @@ var is_unlocked := false
 var _entered := ""
 var _display: Label
 var _overlay: CanvasLayer
-var _face: MeshInstance3D
-var _face_mat: StandardMaterial3D
+var _screen_mat: StandardMaterial3D
+var _screen_light: OmniLight3D
 
 
 func _ready() -> void:
 	# The keypad UI pauses the tree in solo; keep processing so the ESC
 	# handler and close timers still run while paused.
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	_build_face()
+	_build_model()
 	_build_overlay()
 
 
@@ -46,11 +46,13 @@ func power_on() -> void:
 	if powered:
 		return
 	powered = true
-	if ResourceLoader.exists(FACE_ON_PATH):
-		_face_mat.albedo_texture = load(FACE_ON_PATH)
-		_face_mat.emission_enabled = true
-		_face_mat.emission = Color(0.25, 0.6, 0.35)
-		_face_mat.emission_energy_multiplier = 0.35
+	# The little screen wakes up green, like the fullscreen art.
+	_screen_mat.albedo_color = Color(0.1, 0.3, 0.15)
+	_screen_mat.emission_enabled = true
+	_screen_mat.emission = Color(0.2, 0.9, 0.4)
+	_screen_mat.emission_energy_multiplier = 1.2
+	if _screen_light:
+		_screen_light.visible = true
 	AudioSynthesizer.play_at("tick", global_position, -8.0, 1.4)
 
 
@@ -209,36 +211,84 @@ func _refresh_display() -> void:
 # --- Construction ----------------------------------------------------------
 
 
-## Wall plate + textured face quad (starts dark, lights up with power).
-func _build_face() -> void:
-	_face_mat = StandardMaterial3D.new()
-	_face_mat.roughness = 0.6
-	if ResourceLoader.exists(FACE_OFF_PATH):
-		_face_mat.albedo_texture = load(FACE_OFF_PATH)
-	var quad := QuadMesh.new()
-	quad.size = Vector2(0.42, 0.55)
-	quad.material = _face_mat
-	_face = MeshInstance3D.new()
-	_face.mesh = quad
-	_face.position = Vector3(0, 0, 0.035)
-	add_child(_face)
+## Proper little 3D wall unit: teal metal case, dark screen (glows green
+## with power), a 3x4 grid of raised keys with red/green accents, and a
+## conduit running down the wall — matching the fullscreen art's look.
+func _build_model() -> void:
+	var case_mat := StandardMaterial3D.new()
+	case_mat.albedo_color = Color(0.3, 0.38, 0.4)
+	case_mat.metallic = 0.45
+	case_mat.roughness = 0.5
+	var case_box := BoxMesh.new()
+	case_box.size = Vector3(0.36, 0.52, 0.07)
+	case_box.material = case_mat
+	var case_mesh := MeshInstance3D.new()
+	case_mesh.mesh = case_box
+	add_child(case_mesh)
 
-	var backing := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(0.46, 0.6, 0.06)
-	var iron := StandardMaterial3D.new()
-	iron.albedo_color = Color(0.25, 0.26, 0.3)
-	iron.metallic = 0.6
-	iron.roughness = 0.5
-	box.material = iron
-	backing.mesh = box
-	add_child(backing)
+	_screen_mat = StandardMaterial3D.new()
+	_screen_mat.albedo_color = Color(0.05, 0.08, 0.06)
+	_screen_mat.roughness = 0.25
+	var screen_box := BoxMesh.new()
+	screen_box.size = Vector3(0.26, 0.12, 0.016)
+	screen_box.material = _screen_mat
+	var screen := MeshInstance3D.new()
+	screen.mesh = screen_box
+	screen.position = Vector3(0, 0.15, 0.035)
+	add_child(screen)
 
-	var col := CollisionShape3D.new()
+	_screen_light = OmniLight3D.new()
+	_screen_light.light_color = Color(0.3, 1.0, 0.5)
+	_screen_light.light_energy = 0.5
+	_screen_light.omni_range = 1.4
+	_screen_light.position = Vector3(0, 0.15, 0.25)
+	_screen_light.visible = false
+	add_child(_screen_light)
+
+	var key_mat := StandardMaterial3D.new()
+	key_mat.albedo_color = Color(0.72, 0.76, 0.78)
+	key_mat.roughness = 0.6
+	var red_mat := StandardMaterial3D.new()
+	red_mat.albedo_color = Color(0.6, 0.15, 0.12)
+	red_mat.roughness = 0.6
+	var green_mat := StandardMaterial3D.new()
+	green_mat.albedo_color = Color(0.35, 0.55, 0.25)
+	green_mat.roughness = 0.6
+	for row in 4:
+		for col in 3:
+			var key_box := BoxMesh.new()
+			key_box.size = Vector3(0.06, 0.05, 0.016)
+			if row == 0 and col == 2:
+				key_box.material = red_mat
+			elif row == 3 and col == 2:
+				key_box.material = green_mat
+			else:
+				key_box.material = key_mat
+			var key := MeshInstance3D.new()
+			key.mesh = key_box
+			key.position = Vector3(-0.085 + col * 0.085, 0.04 - row * 0.075, 0.035)
+			add_child(key)
+
+	# Conduit down to the porch slab.
+	var conduit_mat := StandardMaterial3D.new()
+	conduit_mat.albedo_color = Color(0.24, 0.28, 0.3)
+	conduit_mat.metallic = 0.5
+	conduit_mat.roughness = 0.5
+	var conduit := MeshInstance3D.new()
+	var pipe := CylinderMesh.new()
+	pipe.top_radius = 0.028
+	pipe.bottom_radius = 0.028
+	pipe.height = 1.0
+	pipe.material = conduit_mat
+	conduit.mesh = pipe
+	conduit.position = Vector3(0.13, -0.76, -0.01)
+	add_child(conduit)
+
+	var col_shape := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(0.5, 0.64, 0.12)
-	col.shape = shape
-	add_child(col)
+	shape.size = Vector3(0.42, 0.58, 0.12)
+	col_shape.shape = shape
+	add_child(col_shape)
 
 
 ## Fullscreen hotspot UI over the KeypadOnline art.
