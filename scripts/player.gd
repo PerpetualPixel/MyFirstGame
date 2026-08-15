@@ -35,6 +35,14 @@ var _visual_base_pos := Vector3.ZERO
 var _gait_phase := 0.0
 var _adjusting_mirror: RotatingMirror = null
 var _mirror_sync_accum := 0.0
+## Mirror hauling: the grabbed mirror rides at a fixed world-space offset
+## from the player (walk toward it = push, away = drag), streamed to
+## peers at 10 Hz. Cleared when released or when the mirror seats.
+var _pushing_mirror: RotatingMirror = null
+var _push_offset := Vector3.ZERO
+var _push_sync_accum := 0.0
+## Hauling a full-height mirror is slow work.
+@export var push_speed_factor: float = 0.55
 var _step_accum := 0.9
 var _last_mouse_x := 0.0
 var _fade_walls: Array = []
@@ -184,6 +192,9 @@ const EXTRA_ANIM_SOURCES := {
 	"idle": {"path": "res://assets/sophie/Idle.fbx", "loop": true},
 	"pick_up": {"path": "res://assets/sophie/Picking Up.fbx", "loop": false},
 	"open_door": {"path": "res://assets/sophie/Opening Door Inwards.fbx", "loop": false},
+	# Optional: drop a Mixamo push cycle here and mirror hauling uses it
+	# instead of the procedural lean (missing files are skipped).
+	"push": {"path": "res://assets/sophie/Pushing.fbx", "loop": true},
 }
 
 
@@ -198,6 +209,8 @@ func _register_external_animations() -> void:
 		_shared_anim_lib = AnimationLibrary.new()
 		for anim_name in EXTRA_ANIM_SOURCES:
 			var source: Dictionary = EXTRA_ANIM_SOURCES[anim_name]
+			if not ResourceLoader.exists(source["path"]):
+				continue
 			var scene: PackedScene = load(source["path"])
 			if scene == null:
 				continue
@@ -294,22 +307,44 @@ func _physics_process(delta: float) -> void:
 		if global_position.distance_to(_adjusting_mirror.global_position) > 3.5:
 			_finish_mirror_adjust()
 		input_dir = Vector2.ZERO
+	# Hauling: the mirror seated itself (or vanished) -> hands off.
+	var speed_cap := max_speed
+	if _pushing_mirror:
+		if not is_instance_valid(_pushing_mirror) or _pushing_mirror.seated \
+				or _pushing_mirror.pusher != self:
+			_finish_push()
+		else:
+			speed_cap = max_speed * push_speed_factor
 	# Rotate input by the camera yaw so "up" always moves away from the camera.
 	var direction := camera_pivot.basis * Vector3(input_dir.x, 0.0, input_dir.y)
 
 	var flat_velocity := Vector3(velocity.x, 0.0, velocity.z)
 	if direction:
-		flat_velocity = flat_velocity.move_toward(direction * max_speed, acceleration * delta)
+		flat_velocity = flat_velocity.move_toward(direction * speed_cap, acceleration * delta)
 		# Face the movement direction (-Z is the body's forward).
 		var target_angle := atan2(-direction.x, -direction.z)
 		rotation.y = lerp_angle(rotation.y, target_angle, 1.0 - exp(-rotation_speed * delta))
 	else:
 		flat_velocity = flat_velocity.move_toward(Vector3.ZERO, deceleration * delta)
+	# The hauled mirror must not be shoved through walls or furniture:
+	# test its destination first and drop the blocked axis so the player
+	# still slides along obstacles instead of freezing dead.
+	if _pushing_mirror and flat_velocity.length_squared() > 0.0001:
+		var step := flat_velocity * delta
+		if not _push_destination_clear(step):
+			if _push_destination_clear(Vector3(step.x, 0, 0)):
+				flat_velocity.z = 0.0
+			elif _push_destination_clear(Vector3(0, 0, step.z)):
+				flat_velocity.x = 0.0
+			else:
+				flat_velocity = Vector3.ZERO
 	velocity.x = flat_velocity.x
 	velocity.z = flat_velocity.z
 
 	move_and_slide()
 	net_speed = Vector2(velocity.x, velocity.z).length()
+	if _pushing_mirror:
+		_update_pushed_mirror(delta)
 	_update_wall_fade(delta)
 	_animate_visual(delta)
 	_update_footsteps(delta)
@@ -350,8 +385,15 @@ func _update_footsteps(delta: float) -> void:
 func _animate_visual(delta: float) -> void:
 	var speed := Vector2(velocity.x, velocity.z).length() if is_local_player() else net_speed
 	var stride := clampf(speed / max_speed, 0.0, 1.0)
+	# Hauling a mirror: shoulders forward, weight into the load. With a
+	# real push clip registered it drives the legs; otherwise the walk
+	# cycle plays slow and heavy under the lean.
+	var pushing := _pushing_mirror != null
+	var lean := (0.24 + 0.1 * stride) if pushing else 0.0
+	var lean_weight := 1.0 - exp(-8.0 * delta)
 
 	if _anim_player and not _walk_anim.is_empty():
+		_visual.rotation.x = lerpf(_visual.rotation.x, lean, lean_weight)
 		# One-shot action (pick up, open door) plays out unless the player
 		# starts moving, which cancels straight back into the walk.
 		if not _action_anim.is_empty():
@@ -361,10 +403,13 @@ func _animate_visual(delta: float) -> void:
 			_action_anim = ""
 		if speed > 0.1:
 			_visual.position = _visual_base_pos
-			if _anim_player.current_animation != _walk_anim or not _anim_player.is_playing():
-				_anim_player.play(_walk_anim, 0.25)
-			# Foot cadence follows actual movement speed.
-			_anim_player.speed_scale = 0.5 + stride * 0.9
+			var gait := _walk_anim
+			if pushing and _anim_player.has_animation("moves/push"):
+				gait = "moves/push"
+			if _anim_player.current_animation != gait or not _anim_player.is_playing():
+				_anim_player.play(gait, 0.25)
+			# Foot cadence follows actual movement speed (heavy when hauling).
+			_anim_player.speed_scale = (0.45 + stride * 0.5) if pushing else (0.5 + stride * 0.9)
 		elif not _idle_anim.is_empty():
 			if _anim_player.current_animation != _idle_anim:
 				_anim_player.play(_idle_anim, 0.25)
@@ -383,7 +428,7 @@ func _animate_visual(delta: float) -> void:
 	var breathe := sin(_gait_phase * 0.35) * 0.012 * (1.0 - stride)
 	_visual.position = _visual_base_pos + Vector3(0, bob + breathe, 0)
 	var weight := 1.0 - exp(-8.0 * delta)
-	_visual.rotation.x = lerpf(_visual.rotation.x, 0.1 * stride, weight)
+	_visual.rotation.x = lerpf(_visual.rotation.x, 0.1 * stride + lean, weight)
 	_visual.rotation.z = sin(_gait_phase * 0.5) * 0.02 * stride
 
 
@@ -498,7 +543,11 @@ func _update_prompt() -> void:
 	var anchor: Node3D = null
 	var height := 1.6
 	var target := get_nearest_interactable()
-	if target is Interactable:
+	if _pushing_mirror and is_instance_valid(_pushing_mirror):
+		text = "[E] Release Mirror"
+		anchor = _pushing_mirror
+		height = _pushing_mirror.prompt_height
+	elif target is Interactable:
 		text = target.get_prompt(self)
 		anchor = target
 		height = target.prompt_height
@@ -566,14 +615,26 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 
+	# Hauling a mirror: [E] or [ESC] lets go; nothing else interacts.
+	if _pushing_mirror:
+		if event.is_action_pressed("interact") or event.is_action_pressed("ui_cancel"):
+			_finish_push()
+			get_viewport().set_input_as_handled()
+		return
+
 	# [E] always interacts (valves, doors, mirrors work while carrying);
 	# [G] is the dedicated drop key, so tools are never dropped by accident.
 	if event.is_action_pressed("interact"):
 		var target := get_nearest_interactable()
 		if target is RotatingMirror:
-			# Enter mirror rotation mode.
-			_adjusting_mirror = target
-			_adjusting_mirror.start_rotating()
+			var mirror := target as RotatingMirror
+			if mirror.pushable and not mirror.seated:
+				# Unseated pushable: take hold and haul it to its ring.
+				start_pushing(mirror)
+			else:
+				# Enter mirror rotation mode.
+				_adjusting_mirror = mirror
+				_adjusting_mirror.start_rotating()
 		elif target:
 			request_interact(target)
 	elif event.is_action_pressed("drop"):
@@ -598,6 +659,73 @@ func _unhandled_input(event: InputEvent) -> void:
 			_net_ping.rpc(at)
 		else:
 			_spawn_ping(at)
+
+
+# --- Mirror hauling ------------------------------------------------------
+
+
+## Take hold of a pushable mirror. The grip offset is wherever the mirror
+## stands relative to the player right now, clamped so the two bodies
+## never overlap; from here on it rides that offset in WORLD space.
+func start_pushing(mirror: RotatingMirror) -> bool:
+	if _pushing_mirror != null or not mirror.begin_push(self):
+		return false
+	_pushing_mirror = mirror
+	var offset := mirror.global_position - global_position
+	offset.y = 0.0
+	if offset.length() < 0.05:
+		offset = -global_transform.basis.z
+	_push_offset = offset.normalized() * clampf(offset.length(), 0.95, 1.5)
+	_push_sync_accum = 0.0
+	return true
+
+
+func _finish_push() -> void:
+	if _pushing_mirror == null:
+		return
+	if is_instance_valid(_pushing_mirror):
+		_pushing_mirror.end_push()
+	_pushing_mirror = null
+
+
+## Move the hauled mirror onto its grip offset and stream it to peers.
+## The mirror seats itself when it comes within its snap radius.
+func _update_pushed_mirror(delta: float) -> void:
+	if not is_instance_valid(_pushing_mirror):
+		_pushing_mirror = null
+		return
+	var target := global_position + _push_offset
+	var mirror := _pushing_mirror
+	mirror.set_hauled_position(target)
+	if mirror.seated:
+		# set_hauled_position snapped it home; the mirror already released us.
+		if NetworkSession.multiplayer_active:
+			mirror._net_seat.rpc()
+		_pushing_mirror = null
+		return
+	if NetworkSession.multiplayer_active:
+		_push_sync_accum += delta
+		if _push_sync_accum >= 0.1:
+			_push_sync_accum = 0.0
+			mirror._net_set_position.rpc(mirror.global_position)
+
+
+## True when the hauled mirror can occupy (its position + step) without
+## overlapping walls, furniture, doors, or other mirrors.
+func _push_destination_clear(step: Vector3) -> bool:
+	if not is_instance_valid(_pushing_mirror):
+		return true
+	var space := get_world_3d().direct_space_state
+	var shape := CylinderShape3D.new()
+	shape.radius = 0.42
+	shape.height = 1.7
+	var params := PhysicsShapeQueryParameters3D.new()
+	params.shape = shape
+	params.transform = Transform3D(Basis.IDENTITY,
+		global_position + _push_offset + step + Vector3(0, 0.9, 0))
+	params.exclude = [get_rid(), _pushing_mirror.get_rid()]
+	params.collide_with_areas = false
+	return space.intersect_shape(params, 1).is_empty()
 
 
 ## Tween target for the [Q] swing: drives the pivot from the unwrapped

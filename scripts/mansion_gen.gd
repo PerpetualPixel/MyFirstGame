@@ -228,8 +228,10 @@ func _pick_run_layout() -> void:
 		func(pair: Array) -> bool: return not maze in pair)
 	_valve_cells = pair_options[_rng.randi_range(0, pair_options.size() - 1)]
 
+	# The clock never shares a room with the maze or the hydraulic press
+	# (the press room is dedicated: console + battery cage).
 	var clock_options: Array = CLOCK_CELL_OPTIONS.filter(
-		func(cell: Vector2i) -> bool: return cell != maze)
+		func(cell: Vector2i) -> bool: return cell != maze and cell != _valve_cells[0])
 	_clock_cell = clock_options[_rng.randi_range(0, clock_options.size() - 1)]
 
 	# Never hide gears in the press's dedicated room: its console sits on
@@ -474,27 +476,15 @@ func _spawn_puzzle() -> void:
 	battery.name = "HeavyBattery"
 	_generated_root.add_child(battery)
 
-	# Route mirrors at free random 15-degree detents (closed doors block
-	# the beam anyway, so no spawn can pre-solve the circuit).
-	var mirror_spots: Array = active_route["mirrors"]
-	for i in mirror_spots.size():
-		var mirror := ROTATING_MIRROR_SCENE.instantiate() as Node3D
-		mirror.name = "Mirror_%d" % i
-		mirror.position = mirror_spots[i]
-		mirror.rotation.y = deg_to_rad(15.0 * float(_rng.randi_range(0, 23)))
-		_generated_root.add_child(mirror)
-
-	# Decoy mirror: interactable, reflective, entirely useless.
-	var decoy := ROTATING_MIRROR_SCENE.instantiate() as Node3D
-	decoy.name = "Mirror_Decoy"
-	decoy.position = get_room_center(_decoy_cell)
-	decoy.rotation.y = deg_to_rad(15.0 * float(_rng.randi_range(0, 23)))
-	_generated_root.add_child(decoy)
-
 	# Maze obstacles: this route's tall privacy screen forces the bounces;
 	# a high bookcase breaks sightlines in the central parlor.
 	_add_prop(active_route["screen"], Vector3(3, 3, 0.4), _shelf_material)
 	_add_prop(Vector3(2.0, 1.5, -2.0), Vector3(2.2, 3, 0.5), _shelf_material)
+	# World spots the mirrors' wall placement must keep clear of (the
+	# clock, press, and cage are appended as they spawn below).
+	var reserved: Array[Vector3] = [
+		active_route["emitter"], active_route["screen"], Vector3(2.0, 0, -2.0),
+	]
 
 	var receiver := LIGHT_RECEIVER_SCENE.instantiate() as Node3D
 	receiver.name = "Receiver"
@@ -522,9 +512,12 @@ func _spawn_puzzle() -> void:
 	machine.valve_pressures = pressures
 	machine.target_psi = _roll_target_psi(pressures)
 	var press_room := get_room_center(_valve_cells[0])
-	# Against the north wall, west of its door gap, facing into the room.
-	machine.position = press_room + Vector3(-2.2, 0, -4.35)
+	# Against the north wall, hard up beside the battery cage's west wall
+	# (cage x 2.36..4.74), so the console stands right next to the
+	# hydraulic gate it controls. Faces into the room.
+	machine.position = press_room + Vector3(1.2, 0, -4.35)
 	_generated_root.add_child(machine)
+	reserved.append(machine.position)
 	# The vault gate's right-hand lamp now tracks the hydraulics.
 	machine.puzzle_solved.connect(door.on_hydraulics_ready)
 
@@ -532,6 +525,8 @@ func _spawn_puzzle() -> void:
 	# walls, sealed by the hydraulic gate until the press balances. The
 	# Heavy Battery sits inside, visible as the reward from the console.
 	var cage := press_room + Vector3(3.55, 0, -3.55)
+	reserved.append(cage)
+	reserved.append(cage + Vector3(0, 0, 1.1))  # the gate and its approach
 	_add_fade_wall(cage + Vector3(0, 1.15, -1.19), Vector3(2.56, 2.3, 0.18))
 	_add_fade_wall(cage + Vector3(-1.19, 1.15, 0), Vector3(0.18, 2.3, 2.2))
 	_add_fade_wall(cage + Vector3(1.19, 1.15, 0), Vector3(0.18, 2.3, 2.2))
@@ -552,6 +547,7 @@ func _spawn_puzzle() -> void:
 	clock.position = get_room_center(_clock_cell) + Vector3(-3.0, 0, room_size / 2.0 - wall_thickness / 2.0 - 0.4)
 	clock.rotation.y = PI
 	_generated_root.add_child(clock)
+	reserved.append(clock.position)
 	var teeth_perm := [8, 12, 16]
 	for i in range(teeth_perm.size() - 1, 0, -1):
 		var j := _rng.randi_range(0, i)
@@ -570,8 +566,11 @@ func _spawn_puzzle() -> void:
 
 	for i in GEAR_SPECS.size():
 		var spec: Array = GEAR_SPECS[i]
-		_spawn_gear(spec[0], spec[1], spec[2],
-			get_room_center(_gear_cells[i]) + Vector3(-1.8, 0.3, -4.2), "Gear_%d" % i)
+		var gear_at := get_room_center(_gear_cells[i]) + Vector3(-1.8, 0.3, -4.2)
+		_spawn_gear(spec[0], spec[1], spec[2], gear_at, "Gear_%d" % i)
+		reserved.append(gear_at)
+
+	_spawn_mirrors(reserved)
 
 	_build_pedestal(get_room_center(VAULT_STUDY_CELL))
 	var will := WILL_ITEM_SCENE.instantiate() as Node3D
@@ -580,6 +579,89 @@ func _spawn_puzzle() -> void:
 	_generated_root.add_child(will)
 
 	_build_exit_zone()
+
+
+## Room-local wall spots a standing mirror can be parked at: hugging each
+## wall, clear of every door gap (x/z -1..1), the north-wall shelves
+## (x ±2.6..4.4), the NW lamp table, and the crate spots.
+const PERIMETER_SPOTS: Array[Vector3] = [
+	Vector3(-2.0, 0, -4.0), Vector3(2.0, 0, -4.0),   # north wall
+	Vector3(-2.2, 0, 4.0), Vector3(2.2, 0, 4.0),     # south wall
+	Vector3(-4.0, 0, -2.0), Vector3(-4.0, 0, 2.0),   # west wall
+	Vector3(4.0, 0, -2.0), Vector3(4.0, 0, 2.0),     # east wall
+]
+## Minimum clearance between a parked mirror and anything reserved.
+const MIRROR_CLEARANCE := 1.7
+
+
+func _cell_of(pos: Vector3) -> Vector2i:
+	return Vector2i(roundi(pos.x / room_size) + 1, roundi(pos.z / room_size) + 1)
+
+
+## Route mirrors at free random 15-degree detents (closed doors block the
+## beam anyway, so no spawn can pre-solve the circuit). A seeded subset
+## are HAULED mirrors: they start parked against a wall of their room
+## with a floor ring marking their beam spot, and the player must push
+## them home before they can be swiveled. Always at least one of each
+## kind. The decoy stands parked against a wall of its own room, off the
+## beam path, useless as ever.
+func _spawn_mirrors(reserved: Array[Vector3]) -> void:
+	var mirror_spots: Array = active_route["mirrors"]
+	for spot in mirror_spots:
+		reserved.append(spot)
+
+	var hauled: Array[bool] = []
+	for i in mirror_spots.size():
+		hauled.append(_rng.randf() < 0.5)
+	if mirror_spots.size() > 1:
+		if not hauled.has(true):
+			hauled[_rng.randi_range(0, hauled.size() - 1)] = true
+		if not hauled.has(false):
+			hauled[_rng.randi_range(0, hauled.size() - 1)] = false
+
+	for i in mirror_spots.size():
+		var target: Vector3 = mirror_spots[i]
+		var mirror := ROTATING_MIRROR_SCENE.instantiate() as RotatingMirror
+		mirror.name = "Mirror_%d" % i
+		mirror.rotation.y = deg_to_rad(15.0 * float(_rng.randi_range(0, 23)))
+		var parked: Array = _pick_perimeter_spot(_cell_of(target), reserved) if hauled[i] else []
+		if parked.is_empty():
+			# Fixed on its beam spot (or no free wall spot: never break the route).
+			mirror.position = target
+		else:
+			mirror.make_pushable(target)
+			mirror.position = parked[0]
+			reserved.append(parked[0])
+		_generated_root.add_child(mirror)
+
+	var decoy := ROTATING_MIRROR_SCENE.instantiate() as RotatingMirror
+	decoy.name = "Mirror_Decoy"
+	var decoy_spot: Array = _pick_perimeter_spot(_decoy_cell, reserved)
+	decoy.position = decoy_spot[0] if not decoy_spot.is_empty() else get_room_center(_decoy_cell)
+	decoy.rotation.y = deg_to_rad(15.0 * float(_rng.randi_range(0, 23)))
+	_generated_root.add_child(decoy)
+
+
+## A seeded free wall spot in `cell`: off the beam path and at least
+## MIRROR_CLEARANCE from everything reserved. Returns [pos] or [] if the
+## room's walls are full.
+func _pick_perimeter_spot(cell: Vector2i, reserved: Array[Vector3]) -> Array:
+	var center := get_room_center(cell)
+	var options: Array[Vector3] = []
+	for offset in PERIMETER_SPOTS:
+		var p := center + offset
+		if _near_beam_path(p):
+			continue
+		var clear := true
+		for r in reserved:
+			if Vector2(p.x - r.x, p.z - r.z).length() < MIRROR_CLEARANCE:
+				clear = false
+				break
+		if clear:
+			options.append(p)
+	if options.is_empty():
+		return []
+	return [options[_rng.randi_range(0, options.size() - 1)]]
 
 
 ## Five signed PSI contributions for the press's valves: seeded shuffled

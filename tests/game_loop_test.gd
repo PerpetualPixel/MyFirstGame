@@ -55,6 +55,16 @@ func _run() -> void:
 		print("TEST FAIL: gear hidden in the press's dedicated room")
 		quit(1)
 		return
+	# The clock and the press live in different rooms, and the console
+	# stands right beside the hydraulic gate it controls.
+	if gen._clock_cell == gen._valve_cells[0]:
+		print("TEST FAIL: clock and press share a room")
+		quit(1)
+		return
+	if machine.global_position.distance_to(pressure_gate.global_position) > 3.5:
+		print("TEST FAIL: press console is not beside the hydraulic gate (%.1f m)" % machine.global_position.distance_to(pressure_gate.global_position))
+		quit(1)
+		return
 	if machine.valve_on.size() != 5 or machine.small_tight.size() < 1 or machine.small_tight.size() > 3 \
 			or machine.big_tight.size() < 1 or machine.big_tight.size() > 2:
 		print("TEST FAIL: press built %d valves, %d small, %d big fittings" % [
@@ -208,6 +218,61 @@ func _run() -> void:
 		quit(1)
 		return
 	print("fuse power + keypad + notebook OK")
+
+	# --- Mirrors: hauled ones park by a wall and must be pushed home ---
+	var route_mirrors: Array = []
+	for i in route["mirrors"].size():
+		route_mirrors.append(_mirror_named(mirrors, "Mirror_%d" % i))
+	var hauled_count := 0
+	for i in route_mirrors.size():
+		var m: RotatingMirror = route_mirrors[i]
+		var target: Vector3 = route["mirrors"][i]
+		if m.pushable:
+			hauled_count += 1
+			if m.seated or m.global_position.distance_to(target) < 1.5:
+				print("TEST FAIL: hauled mirror %d spawned seated / on its ring" % i)
+				quit(1)
+				return
+			if m.global_position.distance_to(gen.get_room_center(gen._cell_of(target))) < 3.0:
+				print("TEST FAIL: hauled mirror %d not parked by a wall (%s)" % [i, m.global_position])
+				quit(1)
+				return
+		elif m.global_position.distance_to(target) > 0.05 or not m.seated:
+			print("TEST FAIL: fixed mirror %d off its beam spot" % i)
+			quit(1)
+			return
+	if hauled_count == 0 or hauled_count == route_mirrors.size():
+		print("TEST FAIL: expected a mix of hauled and fixed mirrors (hauled=%d/%d)" % [hauled_count, route_mirrors.size()])
+		quit(1)
+		return
+	# Swivel is refused until a hauled mirror is seated; hauling it to its
+	# ring seats it (snap), after which it swivels like any other.
+	for i in route_mirrors.size():
+		var m: RotatingMirror = route_mirrors[i]
+		if not m.pushable:
+			continue
+		var target: Vector3 = route["mirrors"][i]
+		player.teleport(m.global_position + Vector3(0, 0, 1.1))
+		for k in 5:
+			await physics_frame
+		if not player.start_pushing(m):
+			print("TEST FAIL: could not take hold of hauled mirror %d" % i)
+			quit(1)
+			return
+		# Walk it home: the mirror rides the grip offset, so parking the
+		# player one grip-length short of the ring lands it inside the snap.
+		player.teleport(target - player._push_offset)
+		for k in 20:
+			await physics_frame
+		if not m.seated or m.global_position.distance_to(target) > 0.05:
+			print("TEST FAIL: hauled mirror %d did not seat on its ring (at %s)" % [i, m.global_position])
+			quit(1)
+			return
+		if player._pushing_mirror != null:
+			print("TEST FAIL: player still holding a seated mirror")
+			quit(1)
+			return
+	print("hauled mirrors push + snap OK")
 
 	# --- Free-angle swivel: adjust moves smoothly, release snaps to 15° ---
 	var swivel := _mirror_near(mirrors, route["mirrors"][0])
@@ -556,6 +621,13 @@ func _press_escape() -> void:
 	ev.physical_keycode = KEY_ESCAPE
 	ev.pressed = true
 	Input.parse_input_event(ev)
+
+
+func _mirror_named(mirrors: Array, node_name: String) -> RotatingMirror:
+	for m in mirrors:
+		if m.name == node_name:
+			return m
+	return null
 
 
 func _mirror_near(mirrors: Array, pos: Vector3) -> RotatingMirror:
