@@ -1013,23 +1013,26 @@ func _spawn_garage() -> void:
 	_generated_root.add_child(bulb)
 
 	# Junk lot behind (east of) the garage: a U of trash bins, boxes, and
-	# a broke-down car wrapping a small clearing against the hedges.
+	# a broke-down car. The U seals against the north hedge, the car arms
+	# the east side, and the south stays OPEN — players walk in from the
+	# yard and up the corridor between the garage wall and the car.
 	var rust := _make_material(Color(0.42, 0.2, 0.12))
-	_add_prop(Vector3(26.4, 0.45, 17.9), Vector3(0.6, 0.9, 0.6), _iron_material)   # bins, north arm
-	_add_prop(Vector3(27.3, 0.45, 17.8), Vector3(0.6, 0.9, 0.6), _iron_material)
-	_add_prop(Vector3(28.1, 0.4, 18.2), Vector3(0.8, 0.8, 0.8), _crate_material)
-	_spawn_junk_car(Vector3(27.4, 0, 21.2), rust)                                  # east arm
-	_add_prop(Vector3(27.6, 0.4, 24.6), Vector3(0.8, 0.8, 0.8), _crate_material)   # south arm
-	_add_prop(Vector3(26.6, 0.45, 25.0), Vector3(0.6, 0.9, 0.6), _iron_material)
-	_add_prop(Vector3(25.4, 0.35, 24.8), Vector3(0.7, 0.7, 0.7), _crate_material)
+	_add_prop(Vector3(26.7, 0.45, 16.8), Vector3(0.6, 0.9, 0.6), _iron_material)   # bins, north end
+	_add_prop(Vector3(27.6, 0.45, 16.9), Vector3(0.6, 0.9, 0.6), _iron_material)
+	_add_prop(Vector3(28.3, 0.4, 17.4), Vector3(0.8, 0.8, 0.8), _crate_material)
+	_spawn_junk_car(Vector3(27.85, 0, 20.6), rust)                                 # east arm
+	_add_prop(Vector3(27.9, 0.4, 25.9), Vector3(0.8, 0.8, 0.8), _crate_material)   # south arm
+	_add_prop(Vector3(26.8, 0.45, 26.2), Vector3(0.6, 0.9, 0.6), _iron_material)
+	_add_prop(Vector3(25.6, 0.35, 26.0), Vector3(0.7, 0.7, 0.7), _crate_material)
 
 	# Crowbar hidden at one of several seeded spots in the junk — it pries
-	# the garage's side door open.
+	# the garage's side door open. Every spot sits in the walkable
+	# corridor or the south entry, never boxed in.
 	var crowbar := CROWBAR_SCENE.instantiate() as Grabbable
 	crowbar.name = "Crowbar"
 	var crowbar_spots: Array[Vector3] = [
-		Vector3(26.9, 0.25, 18.6), Vector3(27.9, 0.25, 22.9), Vector3(26.2, 0.25, 24.2),
-		Vector3(23.6, 0.25, 25.2), Vector3(26.8, 0.25, 20.6),
+		Vector3(26.5, 0.25, 18.4), Vector3(26.4, 0.25, 21.6), Vector3(27.6, 0.25, 23.2),
+		Vector3(26.9, 0.25, 24.8), Vector3(24.5, 0.25, 24.8),
 	]
 	crowbar.position = crowbar_spots[_rng.randi_range(0, crowbar_spots.size() - 1)]
 	crowbar.rotation.y = _rng.randf_range(0.0, TAU)
@@ -1051,9 +1054,9 @@ func _spawn_garage() -> void:
 	var notebook := NOTEBOOK_SCENE.instantiate() as NotebookPickup
 	notebook.name = "Notebook"
 	var notebook_spots: Array[Vector3] = [
-		Vector3(26.4, 0.92, 17.9),   # on a bin lid
-		Vector3(27.2, 0.05, 19.3),   # ground between bins and car
-		Vector3(27.6, 0.82, 24.6),   # atop the south crate
+		Vector3(26.7, 0.92, 16.8),   # on a bin lid at the U's north end
+		Vector3(26.3, 0.05, 19.9),   # corridor floor beside the car
+		Vector3(27.9, 0.82, 25.9),   # atop the south-arm crate
 	]
 	notebook.position = notebook_spots[_rng.randi_range(0, notebook_spots.size() - 1)]
 	notebook.rotation.y = _rng.randf_range(0.0, TAU)
@@ -1081,30 +1084,56 @@ func _spawn_toy_rocket_corner() -> void:
 	var at := Vector3(-24.5, 0, 24.0)
 	var body_mat := _make_material(Color(0.85, 0.2, 0.15))
 	var nose_mat := _make_material(Color(0.9, 0.88, 0.85))
-	_add_decor_cylinder(at + Vector3(0, 0.1, 0), 0.55, 0.2, _iron_material)  # launch stand
-	_add_decor_cylinder(at + Vector3(0, 1.1, 0), 0.28, 1.8, body_mat)        # fuselage
+	_add_decor_cylinder(at + Vector3(0, 0.08, 0), 0.4, 0.16, _iron_material)  # launch stand
+	_add_decor_cylinder(at + Vector3(0, 0.8, 0), 0.2, 1.3, body_mat)          # fuselage
 	var nose := MeshInstance3D.new()
 	var cone := CylinderMesh.new()
 	cone.top_radius = 0.0
-	cone.bottom_radius = 0.28
-	cone.height = 0.7
+	cone.bottom_radius = 0.2
+	cone.height = 0.5
 	cone.material = nose_mat
 	nose.mesh = cone
-	nose.position = at + Vector3(0, 2.35, 0)
+	nose.position = at + Vector3(0, 1.7, 0)
 	_generated_root.add_child(nose)
 	for fin_yaw in [0.0, TAU / 3.0, 2.0 * TAU / 3.0]:
-		var offset := Basis(Vector3.UP, fin_yaw) * Vector3(0.36, 0, 0)
-		_add_decor_box(at + offset + Vector3(0, 0.5, 0), Vector3(0.3, 0.8, 0.05), nose_mat, fin_yaw)
+		var offset := Basis(Vector3.UP, fin_yaw) * Vector3(0.26, 0, 0)
+		_add_decor_box(at + offset + Vector3(0, 0.35, 0), Vector3(0.22, 0.55, 0.04), nose_mat, fin_yaw)
+	# Solid: an invisible collision cylinder so nobody clips through it.
+	var rocket_body := StaticBody3D.new()
+	var rocket_col := CollisionShape3D.new()
+	var rocket_shape := CylinderShape3D.new()
+	rocket_shape.radius = 0.45
+	rocket_shape.height = 1.95
+	rocket_col.shape = rocket_shape
+	rocket_col.position = Vector3(0, 0.98, 0)
+	rocket_body.add_child(rocket_col)
+	rocket_body.position = at
+	_generated_root.add_child(rocket_body)
+	# Wordless brand: a painted roundel on the fuselage's south face.
+	var ring_mat := _make_material(Color(0.95, 0.95, 0.9))
+	var dot_mat := _make_material(Color(0.15, 0.3, 0.6))
+	var roundel := MeshInstance3D.new()
+	var ring_mesh := CylinderMesh.new()
+	ring_mesh.top_radius = 0.1
+	ring_mesh.bottom_radius = 0.1
+	ring_mesh.height = 0.012
+	ring_mesh.material = ring_mat
+	roundel.mesh = ring_mesh
+	roundel.rotation.x = PI / 2.0
+	roundel.position = at + Vector3(0, 0.95, 0.205)
+	_generated_root.add_child(roundel)
+	var roundel_dot := MeshInstance3D.new()
+	var dot_mesh := CylinderMesh.new()
+	dot_mesh.top_radius = 0.055
+	dot_mesh.bottom_radius = 0.055
+	dot_mesh.height = 0.014
+	dot_mesh.material = dot_mat
+	roundel_dot.mesh = dot_mesh
+	roundel_dot.rotation.x = PI / 2.0
+	roundel_dot.position = at + Vector3(0, 0.95, 0.207)
+	_generated_root.add_child(roundel_dot)
 	# Sealed sibling crate (decor) plus the openable one with the fuse.
 	_add_prop(at + Vector3(1.6, 0.25, -0.6), Vector3(0.9, 0.5, 0.55), _crate_material)
-	var rocket_label := Label3D.new()
-	rocket_label.text = "PATENT ROCKET KIT — MODEL IX"
-	rocket_label.font_size = 44
-	rocket_label.pixel_size = 0.003
-	rocket_label.modulate = Color(0.92, 0.88, 0.7)
-	rocket_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	rocket_label.position = at + Vector3(0, 2.95, 0)
-	_generated_root.add_child(rocket_label)
 
 	var toy_box := TOY_BOX_SCENE.instantiate() as ToyBox
 	toy_box.name = "ToyBox"

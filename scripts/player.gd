@@ -482,15 +482,8 @@ func _update_prompt() -> void:
 	elif target:
 		text = "[E] Use"
 		anchor = target
-	if not inventory.is_empty():
-		var last: Grabbable = inventory.back()
-		var drop_hint := "[Q] Drop %s (%d/%d)" % [last.display_name, inventory.size(), INVENTORY_SIZE]
-		if anchor:
-			text += "\n" + drop_hint
-		else:
-			text = drop_hint
-			anchor = self
-			height = 2.3
+	# No floating drop hint — the HUD's pack slots already show what's
+	# carried, and [Q] quietly drops the newest item.
 	if anchor:
 		if _prompt.text != text:
 			_prompt.text = text  # Label3D rebuilds its mesh on text set
@@ -699,8 +692,35 @@ func get_nearest_interactable() -> Node3D:
 			continue
 		if node is Interactable and not node.can_interact(self):
 			continue
+		# Walls hard-block interaction: no using the fuse panel (or
+		# anything else) through solid geometry. Doors are exempt — they
+		# sit flush in wall openings, where edge-grazing rays would
+		# falsely block them.
+		if not (node is Door) and not _has_line_of_sight(node):
+			continue
 		var dist: float = global_position.distance_squared_to(node.global_position)
 		if dist < nearest_dist:
 			nearest_dist = dist
 			nearest = node
 	return nearest
+
+
+## True when nothing solid stands between the player's chest and the
+## target (the target itself, its children, or its parent mechanism
+## don't count as blockers).
+func _has_line_of_sight(target: Node3D) -> bool:
+	var space := get_world_3d().direct_space_state
+	var from := global_position + Vector3(0, 1.0, 0)
+	var to := target.global_position + Vector3(0, 0.35, 0)
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.exclude = [get_rid()]
+	query.collide_with_areas = false
+	var hit := space.intersect_ray(query)
+	if hit.is_empty():
+		return true
+	var collider: Object = hit["collider"]
+	if collider == target:
+		return true
+	if collider is Node:
+		return target.is_ancestor_of(collider) or (collider as Node).is_ancestor_of(target)
+	return false
