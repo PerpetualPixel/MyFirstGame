@@ -49,6 +49,12 @@ func _run() -> void:
 		return
 	var machine: PressurePuzzleManager = machines[0]
 	var pressure_gate: HydraulicDoor = gates[0]
+	# The press room must never double as a gear hiding room — a gear
+	# spawned inside the console's collision box gets ejected out of reach.
+	if gen._valve_cells[0] in gen._gear_cells:
+		print("TEST FAIL: gear hidden in the press's dedicated room")
+		quit(1)
+		return
 	if machine.valve_on.size() != 5 or machine.small_tight.size() < 1 or machine.small_tight.size() > 3 \
 			or machine.big_tight.size() < 1 or machine.big_tight.size() > 2:
 		print("TEST FAIL: press built %d valves, %d small, %d big fittings" % [

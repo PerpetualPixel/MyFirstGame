@@ -232,7 +232,11 @@ func _pick_run_layout() -> void:
 		func(cell: Vector2i) -> bool: return cell != maze)
 	_clock_cell = clock_options[_rng.randi_range(0, clock_options.size() - 1)]
 
-	var gear_pool: Array = GEAR_CELL_OPTIONS.duplicate()
+	# Never hide gears in the press's dedicated room: its console sits on
+	# the exact north-wall strip gears spawn against, and a RigidBody
+	# born inside that collision box gets ejected somewhere unreachable.
+	var gear_pool: Array = GEAR_CELL_OPTIONS.filter(
+		func(cell: Vector2i) -> bool: return cell != _valve_cells[0])
 	for i in range(gear_pool.size() - 1, 0, -1):
 		var j := _rng.randi_range(0, i)
 		var tmp: Vector2i = gear_pool[i]

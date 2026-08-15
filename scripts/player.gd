@@ -54,8 +54,12 @@ static var local_instance: Player
 var _trauma := 0.0
 var _camera_base_pos := Vector3.ZERO
 var _zoom_tween: Tween
-## Accumulated 90-degree camera yaw target ([Q] swings); tweened so
-## rapid presses queue up instead of fighting each other.
+## Unwrapped camera yaw for the [Q] quarter-turn swings. Node3D wraps
+## rotation.y into (-PI, PI], so reading it back after a few turns
+## disagrees with an accumulated target by full revolutions and sends
+## the tween spinning the long way around — these shadows are the only
+## source of truth, and the node is write-only.
+var _yaw_current := 0.0
 var _yaw_target := 0.0
 var _rotate_tween: Tween
 
@@ -108,7 +112,8 @@ func _ready() -> void:
 	# so snap it onto the player once at spawn.
 	camera_pivot.global_position = global_position
 	_camera_base_pos = _camera.position
-	_yaw_target = camera_pivot.rotation.y
+	_yaw_current = camera_pivot.rotation.y
+	_yaw_target = _yaw_current
 	_camera.current = is_local_player()
 	if is_local_player():
 		local_instance = self
@@ -548,11 +553,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	# 90 degrees clockwise on screen. Movement input is camera-relative
 	# (see _physics_process), so the controls follow automatically.
 	if event.is_action_pressed("rotate_camera"):
+		# Allow at most ONE queued quarter-turn beyond the swing already
+		# playing, so mashed presses can't bank extra spins.
+		if _yaw_target - _yaw_current > PI * 0.75:
+			get_viewport().set_input_as_handled()
+			return
 		_yaw_target += PI / 2.0
 		if _rotate_tween and _rotate_tween.is_running():
 			_rotate_tween.kill()
 		_rotate_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		_rotate_tween.tween_property(camera_pivot, "rotation:y", _yaw_target, 0.35)
+		_rotate_tween.tween_method(_set_camera_yaw, _yaw_current, _yaw_target, 0.35)
 		get_viewport().set_input_as_handled()
 		return
 
@@ -588,6 +598,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			_net_ping.rpc(at)
 		else:
 			_spawn_ping(at)
+
+
+## Tween target for the [Q] swing: drives the pivot from the unwrapped
+## shadow yaw (the node may wrap the value internally; we never read it).
+func _set_camera_yaw(yaw: float) -> void:
+	_yaw_current = yaw
+	camera_pivot.rotation.y = yaw
 
 
 func _finish_mirror_adjust() -> void:
