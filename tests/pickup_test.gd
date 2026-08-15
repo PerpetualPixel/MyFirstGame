@@ -47,17 +47,17 @@ func _run() -> void:
 
 	target.interact(player)
 	await physics_frame
-	if player.held_item != cog or cog.get_parent() != player.hold_point:
-		print("TEST FAIL: interact() did not attach the cog (held_item=%s, parent=%s)" % [player.held_item, cog.get_parent()])
+	if not player.inventory.has(cog) or cog.get_parent() != player or cog.visible:
+		print("TEST FAIL: interact() did not stow the cog (in pack=%s, parent=%s, visible=%s)" % [player.inventory.has(cog), cog.get_parent(), cog.visible])
 		quit(1)
 		return
-	print("picked up OK, cog parented to: ", cog.get_parent().name)
+	print("packed OK, cog riding: ", cog.get_parent().name)
 
 	player.drop_held()
 	for i in 30:
 		await physics_frame
-	if player.held_item != null:
-		print("TEST FAIL: held_item not cleared after drop")
+	if not player.inventory.is_empty() or not cog.visible:
+		print("TEST FAIL: pack not cleared (or cog invisible) after drop")
 		quit(1)
 		return
 	if cog.global_position.y > 0.5:

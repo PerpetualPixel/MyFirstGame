@@ -1,14 +1,20 @@
 extends CanvasLayer
 
 ## HUD chrome behaviors: the objectives list can be collapsed/expanded via
-## its header button, and its on-screen size follows the
-## GameSettings.objectives_scale setting (adjustable in the pause menu).
+## its header button, its on-screen size follows the
+## GameSettings.objectives_scale setting (adjustable in the pause menu),
+## and [Tab] toggles the collected-notes panel (PlayerNotes entries).
 ## Objective label text itself is managed by GameManager.
 
 @onready var _objectives: VBoxContainer = $Objectives
 @onready var _toggle: Button = $Objectives/ToggleButton
 
 var _collapsed := false
+var _notes_panel: PanelContainer
+var _notes_list: VBoxContainer
+var _inv_slots: Array[PanelContainer] = []
+var _inv_signature := ""
+var _fuse_icon: Texture2D
 
 
 func _ready() -> void:
@@ -17,6 +23,17 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_toggle.pressed.connect(_on_toggle_pressed)
 	_apply_scale(GameSettings.objectives_scale)
+	_build_notes_panel()
+	_build_inventory_bar()
+
+
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("notes"):
+		_notes_panel.visible = not _notes_panel.visible
+		if _notes_panel.visible:
+			_refresh_notes()
+		AudioSynthesizer.play_ui("tick", -16.0, 1.1)
+		get_viewport().set_input_as_handled()
 
 
 ## Polled (not signaled): GameSettings is a static class, and the pause
@@ -24,6 +41,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if _objectives.scale.x != GameSettings.objectives_scale:
 		_apply_scale(GameSettings.objectives_scale)
+	_refresh_inventory_bar()
 
 
 func _on_toggle_pressed() -> void:
@@ -38,3 +56,122 @@ func _on_toggle_pressed() -> void:
 func _apply_scale(value: float) -> void:
 	# Scales from the list's top-left corner, so it stays anchored on screen.
 	_objectives.scale = Vector2(value, value)
+
+
+# --- Inventory bar (3 pack slots, bottom-left) -----------------------------
+
+
+func _build_inventory_bar() -> void:
+	if ResourceLoader.exists("res://assets/ui/FuseIcon.png"):
+		_fuse_icon = load("res://assets/ui/FuseIcon.png")
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 8)
+	bar.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	bar.offset_left = 16.0
+	bar.offset_top = -92.0
+	bar.offset_bottom = -16.0
+	add_child(bar)
+	for i in 3:
+		var slot := PanelContainer.new()
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color(0.06, 0.05, 0.04, 0.8)
+		style.border_color = Color(0.5, 0.4, 0.2, 0.8)
+		style.set_border_width_all(2)
+		style.set_corner_radius_all(6)
+		slot.add_theme_stylebox_override("panel", style)
+		slot.custom_minimum_size = Vector2(76, 76)
+		bar.add_child(slot)
+		_inv_slots.append(slot)
+
+
+func _refresh_inventory_bar() -> void:
+	var local: Node = null
+	for player in get_tree().get_nodes_in_group("players"):
+		if player.is_local_player():
+			local = player
+	if local == null or local.get("inventory") == null:
+		return
+	var items: Array = local.inventory
+	var signature := ""
+	for item in items:
+		if is_instance_valid(item):
+			signature += item.name + ";"
+	if signature == _inv_signature:
+		return
+	_inv_signature = signature
+	for i in _inv_slots.size():
+		for child in _inv_slots[i].get_children():
+			child.queue_free()
+		if i >= items.size() or not is_instance_valid(items[i]):
+			continue
+		var item: Node = items[i]
+		if item.is_in_group("fuses") and _fuse_icon != null:
+			var icon := TextureRect.new()
+			icon.texture = _fuse_icon
+			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			_inv_slots[i].add_child(icon)
+		else:
+			var tag := Label.new()
+			tag.text = str(item.get("display_name"))
+			tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			tag.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			tag.autowrap_mode = TextServer.AUTOWRAP_WORD
+			tag.add_theme_font_size_override("font_size", 12)
+			tag.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7))
+			_inv_slots[i].add_child(tag)
+
+
+# --- Notes panel ([Tab]) ---------------------------------------------------
+
+
+func _build_notes_panel() -> void:
+	_notes_panel = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.065, 0.045, 0.94)
+	style.border_color = Color(0.55, 0.42, 0.18)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(6)
+	style.content_margin_left = 18.0
+	style.content_margin_right = 18.0
+	style.content_margin_top = 12.0
+	style.content_margin_bottom = 14.0
+	_notes_panel.add_theme_stylebox_override("panel", style)
+	_notes_panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	_notes_panel.offset_left = -420.0
+	_notes_panel.offset_right = -24.0
+	_notes_panel.offset_top = -160.0
+	_notes_panel.offset_bottom = 160.0
+	_notes_panel.visible = false
+	add_child(_notes_panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	_notes_panel.add_child(vbox)
+	var title := Label.new()
+	title.text = "Notes                                    [Tab] close"
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", Color(0.9, 0.78, 0.5))
+	vbox.add_child(title)
+	_notes_list = VBoxContainer.new()
+	_notes_list.add_theme_constant_override("separation", 6)
+	vbox.add_child(_notes_list)
+
+
+func _refresh_notes() -> void:
+	for child in _notes_list.get_children():
+		child.queue_free()
+	if PlayerNotes.entries.is_empty():
+		var empty := Label.new()
+		empty.text = "Nothing written down yet."
+		empty.add_theme_font_size_override("font_size", 16)
+		empty.add_theme_color_override("font_color", Color(0.7, 0.65, 0.55))
+		_notes_list.add_child(empty)
+		return
+	for entry in PlayerNotes.entries:
+		var note := Label.new()
+		note.text = "• " + entry
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		note.add_theme_font_size_override("font_size", 16)
+		note.add_theme_color_override("font_color", Color(0.88, 0.84, 0.72))
+		_notes_list.add_child(note)

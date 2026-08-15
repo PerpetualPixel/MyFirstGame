@@ -27,8 +27,8 @@ func interact(by: Node3D) -> void:
 	var battery := _held_battery(by)
 	if battery == null:
 		return
-	by.set("held_item", null)
-	# Seat the battery visibly at the housing's base.
+	# Seat the battery visibly at the housing's base (mount pulls it out
+	# of the carrier's pack).
 	battery.mount(self, Vector3(0, 0.25, 0.62))
 	installed = true
 	var emitter := get_parent() as LightEmitter
@@ -41,7 +41,6 @@ func interact(by: Node3D) -> void:
 
 
 func _held_battery(by: Node3D) -> Grabbable:
-	var held: Node = by.get("held_item")
-	if held != null and held.is_in_group("batteries"):
-		return held
+	if by != null and by.has_method("inventory_find"):
+		return by.inventory_find("batteries")
 	return null

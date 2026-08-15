@@ -56,9 +56,9 @@ func _safe_drop_position(carrier: Node3D) -> Vector3:
 
 
 func get_prompt(by: Node3D = null) -> String:
-	if by != null and by.get("held_item") != null:
-		return "Hands Full"
-	return "[E] Pick up %s" % display_name
+	if by != null and by.has_method("inventory_full") and by.inventory_full():
+		return "Pack Full"
+	return "[E] Take %s" % display_name
 
 
 func interact(by: Node3D) -> void:
@@ -67,8 +67,9 @@ func interact(by: Node3D) -> void:
 	super.interact(by)
 
 
-## Freeze physics and attach to the carrier's hold point.
-func grab(by: Node3D, hold_point: Node3D) -> void:
+## Vanish into a carrier's pack: frozen, collision off, hidden, riding
+## the carrier node until released, mounted, or consumed.
+func stash(by: Node3D) -> void:
 	holder = by
 	_original_parent = get_parent()
 	_original_layer = _body.collision_layer
@@ -76,23 +77,31 @@ func grab(by: Node3D, hold_point: Node3D) -> void:
 	_body.collision_layer = 0
 	_body.collision_mask = 0
 	_body.freeze = true
-	reparent(hold_point)
+	visible = false
+	reparent(by)
 	transform = Transform3D.IDENTITY
 	grabbed.emit(by)
 
 
-## Park this item inside a mechanism (frozen, no collision) — e.g. a gear
-## seated in a clock socket. release() later pops it back into the world.
+## Park this item inside a mechanism (frozen, no collision, visible) —
+## e.g. a gear seated in a clock socket or the battery in its cradle.
+## release() later pops it back into the world.
 func mount(parent_node: Node3D, offset := Vector3.ZERO) -> void:
+	if holder != null and holder.has_method("inventory_remove"):
+		holder.inventory_remove(self)
 	holder = null
+	visible = true
 	reparent(parent_node)
 	transform = Transform3D(Basis.IDENTITY, offset)
 
 
-## Detach from the carrier and resume physics where the hold point is.
+## Detach from the carrier (or mechanism) and resume physics in place.
 func release() -> void:
 	var was_holder := holder
+	if was_holder != null and was_holder.has_method("inventory_remove"):
+		was_holder.inventory_remove(self)
 	holder = null
+	visible = true
 	# Return to wherever we lived before being grabbed; fall back to the
 	# current scene if that node is gone (e.g. regenerated level).
 	var drop_parent: Node = _original_parent if is_instance_valid(_original_parent) else get_tree().current_scene

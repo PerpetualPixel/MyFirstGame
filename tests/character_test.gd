@@ -115,8 +115,8 @@ func _run() -> void:
 	for i in 10:
 		await physics_frame
 	player.pick_up(cog)
-	if player.held_item != cog or cog.get_parent() != hold_point:
-		print("TEST FAIL: item did not attach to HoldPoint")
+	if not player.inventory.has(cog) or cog.get_parent() != player or cog.visible:
+		print("TEST FAIL: item did not stow into the pack")
 		quit(1)
 		return
 	if player._anim_player.current_animation != "moves/pick_up":

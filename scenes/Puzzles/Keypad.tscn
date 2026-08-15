@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/puzzles/keypad.gd" id="1_keypad"]
+
+[node name="Keypad" type="StaticBody3D"]
+script = ExtResource("1_keypad")
+display_name = "Front Door Keypad"
+prompt_height = 1.7

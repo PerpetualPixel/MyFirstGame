@@ -11,11 +11,17 @@ signal door_toggled(open: bool)
 @export var panel_width: float = 2.0
 @export var panel_height: float = 2.35
 @export var panel_thickness: float = 0.12
+## Panel finish; default is interior wood. (The garage's side door is a
+## plain white external door, for example.)
+@export var panel_color: Color = Color(0.4, 0.28, 0.18)
 @export var open_angle_degrees: float = -90.0
 @export var swing_time: float = 0.5
 ## Locked doors show a prompt but refuse to swing (the front double doors
 ## stay locked until the breaker powers the magnetic lock).
 @export var locked: bool = false
+## When non-empty, a held item from this group pries the door open even
+## while locked (e.g. the garage side door yields to a crowbar).
+@export var pry_group := ""
 
 var is_open := false
 
@@ -27,7 +33,7 @@ func _ready() -> void:
 	_closed_yaw = rotation.y
 
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.4, 0.28, 0.18)
+	mat.albedo_color = panel_color
 	mat.roughness = 0.7
 
 	var mesh := MeshInstance3D.new()
@@ -61,13 +67,22 @@ func _ready() -> void:
 		add_child(handle)
 
 
-func get_prompt(_by: Node3D = null) -> String:
+func get_prompt(by: Node3D = null) -> String:
 	if locked:
+		if pry_group != "":
+			if by != null and _held_pry_tool(by) != null:
+				return "[E] Pry Open"
+			return "Jammed shut — needs something to pry it"
 		return "Locked tight — no power"
 	return "[E] %s" % ("Close Door" if is_open else "Open Door")
 
 
 func interact(by: Node3D) -> void:
+	if locked and pry_group != "" and by != null and _held_pry_tool(by) != null:
+		# Crowbar wins: force the latch with a groan and a burst of dust.
+		locked = false
+		AudioSynthesizer.play_at("ratchet", global_position, -2.0, 0.55)
+		_dust_puff(global_position + global_transform.basis.x * (panel_width / 2.0), 16)
 	if locked:
 		return
 	if not is_open and by != null:
@@ -133,3 +148,9 @@ static func _dust_puff(at: Vector3, amount: int) -> void:
 func unlock_and_open() -> void:
 	locked = false
 	set_open(true)
+
+
+func _held_pry_tool(by: Node3D) -> Node:
+	if by != null and by.has_method("inventory_find"):
+		return by.inventory_find(pry_group)
+	return null

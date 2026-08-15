@@ -1,0 +1,45 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/grabbable.gd" id="1_grabbable"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_redsteel"]
+albedo_color = Color(0.5, 0.11, 0.09, 1)
+metallic = 0.75
+roughness = 0.4
+
+[sub_resource type="BoxMesh" id="BoxMesh_bar"]
+material = SubResource("StandardMaterial3D_redsteel")
+size = Vector3(0.07, 0.07, 0.8)
+
+[sub_resource type="BoxMesh" id="BoxMesh_hook"]
+material = SubResource("StandardMaterial3D_redsteel")
+size = Vector3(0.07, 0.2, 0.07)
+
+[sub_resource type="BoxMesh" id="BoxMesh_tip"]
+material = SubResource("StandardMaterial3D_redsteel")
+size = Vector3(0.11, 0.03, 0.12)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_bar"]
+size = Vector3(0.14, 0.24, 0.9)
+
+[node name="Crowbar" type="RigidBody3D" groups=["crowbars"]]
+mass = 2.0
+script = ExtResource("1_grabbable")
+display_name = "Crowbar"
+prompt_height = 0.7
+
+[node name="Bar" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, 0)
+mesh = SubResource("BoxMesh_bar")
+
+[node name="Hook" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.14, -0.38)
+mesh = SubResource("BoxMesh_hook")
+
+[node name="Tip" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.045, 0.38)
+mesh = SubResource("BoxMesh_tip")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
+shape = SubResource("BoxShape3D_bar")

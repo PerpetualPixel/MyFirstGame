@@ -86,8 +86,11 @@ static func shake(amount: float, at: Vector3) -> void:
 	var falloff := 1.0 / (1.0 + local_instance.global_position.distance_to(at) * 0.12)
 	local_instance._trauma = clampf(local_instance._trauma + amount * falloff, 0.0, 1.0)
 
-## The Grabbable currently being carried, or null.
-var held_item: Grabbable = null
+## Small Resident Evil-style pack: up to 3 items ride along (hidden,
+## frozen, parented to the player) and get used or consumed at
+## interaction sites. [Q] drops the most recently taken item.
+const INVENTORY_SIZE := 3
+var inventory: Array[Grabbable] = []
 
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
@@ -479,14 +482,15 @@ func _update_prompt() -> void:
 	elif target:
 		text = "[E] Use"
 		anchor = target
-	if held_item:
-		var drop_hint := "[Q] Drop %s" % held_item.display_name
+	if not inventory.is_empty():
+		var last: Grabbable = inventory.back()
+		var drop_hint := "[Q] Drop %s (%d/%d)" % [last.display_name, inventory.size(), INVENTORY_SIZE]
 		if anchor:
 			text += "\n" + drop_hint
 		else:
 			text = drop_hint
-			anchor = held_item
-			height = 0.6
+			anchor = self
+			height = 2.3
 	if anchor:
 		if _prompt.text != text:
 			_prompt.text = text  # Label3D rebuilds its mesh on text set
@@ -647,20 +651,38 @@ func _spawn_ping(at: Vector3) -> void:
 	get_tree().create_timer(4.0).timeout.connect(beacon.queue_free)
 
 
-## Called by Grabbable.interact(); attaches the item to the hold point.
+## Called by Grabbable.interact(); stows the item in the pack.
 func pick_up(item: Grabbable) -> void:
-	if held_item:
+	if inventory.has(item) or inventory.size() >= INVENTORY_SIZE:
 		return
-	held_item = item
-	item.grab(self, hold_point)
+	inventory.append(item)
+	item.stash(self)
 	play_action("moves/pick_up")
 
 
+## [Q]: drop the most recently taken item back into the world.
 func drop_held() -> void:
-	if held_item == null:
+	if inventory.is_empty():
 		return
-	held_item.release()
-	held_item = null
+	var item: Grabbable = inventory.pop_back()
+	item.release()
+
+
+func inventory_full() -> bool:
+	return inventory.size() >= INVENTORY_SIZE
+
+
+## First carried item belonging to `group`, or null.
+func inventory_find(group: String) -> Grabbable:
+	for item in inventory:
+		if is_instance_valid(item) and item.is_in_group(group):
+			return item
+	return null
+
+
+## Forget a consumed/placed item (does not free or move the node).
+func inventory_remove(item: Grabbable) -> void:
+	inventory.erase(item)
 
 
 ## Returns the closest overlapping node that exposes an interact() method,

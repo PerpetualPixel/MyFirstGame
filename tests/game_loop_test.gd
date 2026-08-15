@@ -1,7 +1,8 @@
 extends SceneTree
 ## Headless end-to-end test of the deepened game loop:
-## 8-wire breaker (clue consistency, wrong wiring inert, solve powers &
-## starts timer) -> free-angle mirror swivel & detent snap -> clockwork
+## crowbar/toy-crate gating -> two-fuse breaker (powers keypad, starts
+## timer) -> keypad PIN opens the front doors (code from the junk-lot
+## notebook) -> free-angle mirror swivel & detent snap -> clockwork
 ## gear puzzle (wrong gear fails, correct set runs the clock and releases
 ## the wrench) -> valves (bare hands rejected, decay, sync-lock) -> laser
 ## maze -> Will to the porch exit -> WIN. Plus pause menu checks.
@@ -13,6 +14,11 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var main: Node = (load("res://scenes/Main.tscn") as PackedScene).instantiate()
+	# ROUTE_OVERRIDE env var (0-2) forces a laser route for full coverage;
+	# must be set before add_child so generation in _ready sees it.
+	var route_env := OS.get_environment("ROUTE_OVERRIDE")
+	if route_env != "":
+		main.get_node("MansionGenerator").route_override = int(route_env)
 	root.add_child(main)
 	for i in 30:
 		await physics_frame
@@ -32,14 +38,14 @@ func _run() -> void:
 	var gears := get_nodes_in_group("clock_gears")
 	print("found: %d mirrors, %d valves, %d vault doors, %d hinged, %d breakers, %d clocks, %d gears" % [
 		mirrors.size(), valves.size(), vault_doors.size(), hinged.size(), breakers.size(), clocks.size(), gears.size()])
-	if mirrors.size() != 5 or valves.size() != 2 or vault_doors.size() != 1 or breakers.size() != 1 \
-			or clocks.size() != 1 or gears.size() != 3 or hinged.size() < 5:
+	if mirrors.size() != route["mirrors"].size() + 1 or valves.size() != 2 or vault_doors.size() != 1 \
+			or breakers.size() != 1 or clocks.size() != 1 or gears.size() != 3 or hinged.size() < 5:
 		print("TEST FAIL: unexpected element counts")
 		quit(1)
 		return
 	var vault_door: VaultDoor = vault_doors[0]
 	var breaker: BreakerBox = breakers[0]
-	var minigame: WiringMinigame = breaker.minigame
+	var minigame: FusePanel = breaker.minigame
 	var clock: ClockworkMechanism = clocks[0]
 
 	# --- PREGAME: frozen timer ---
@@ -50,17 +56,50 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# --- 8-wire board: sanity + clue consistency against ground truth ---
-	if minigame._mapping.size() != 8 or minigame._clues.size() < 6:
-		print("TEST FAIL: expected 8 wires and clue set (got %d wires, %d clues)" % [minigame._mapping.size(), minigame._clues.size()])
+	# --- Garage gating: crowbar pries the side door; toy crate frees its fuse ---
+	var toy_boxes := _find_all(main, "ToyBox")
+	if get_nodes_in_group("crowbars").size() != 1 or get_nodes_in_group("fuses").size() != 2 \
+			or toy_boxes.size() != 1:
+		print("TEST FAIL: crowbar/fuse/toybox counts wrong")
 		quit(1)
 		return
-	for clue in minigame._clues:
-		if not WiringMinigame.clue_holds(clue, minigame._mapping):
-			print("TEST FAIL: generated clue inconsistent with mapping: %s" % clue["text"])
-			quit(1)
-			return
-	print("8-wire clue set consistent")
+	var tbox: ToyBox = toy_boxes[0]
+	var fuse_a: RigidBody3D = tbox.stash
+	if fuse_a == null or fuse_a.collision_layer != 0:
+		print("TEST FAIL: fuse not stashed in the toy crate")
+		quit(1)
+		return
+	tbox.interact(player)
+	await physics_frame
+	if not tbox.opened or fuse_a.collision_layer == 0:
+		print("TEST FAIL: toy crate did not release its fuse")
+		quit(1)
+		return
+	var side_door: Door = null
+	for d in hinged:
+		if d.name == "GarageSideDoor":
+			side_door = d
+	if side_door == null or not side_door.locked:
+		print("TEST FAIL: garage side door missing or unlocked at spawn")
+		quit(1)
+		return
+	side_door.interact(player)  # bare hands: stays jammed
+	if side_door.is_open or not side_door.locked:
+		print("TEST FAIL: garage door opened without the crowbar")
+		quit(1)
+		return
+	var bar: Grabbable = get_nodes_in_group("crowbars")[0]
+	player.teleport(bar.global_position + Vector3(0, 0, 1.0))
+	for i in 10:
+		await physics_frame
+	player.pick_up(bar)
+	side_door.interact(player)
+	if side_door.locked or not side_door.is_open:
+		print("TEST FAIL: crowbar did not pry the garage door open")
+		quit(1)
+		return
+	player.drop_held()
+	print("garage gating & toy crate OK")
 
 	# --- ESC closes the minigame, not the pause menu ---
 	breaker.interact(player)
@@ -77,25 +116,76 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# --- Wrong wiring inert; correct wiring powers the mansion ---
-	breaker.interact(player)
-	await process_frame
-	var names: Array = minigame._mapping.keys()
-	for wire_name in names:
-		minigame.connect_wire(wire_name, (minigame._mapping[wire_name] + 1) % 8)
-	await process_frame
-	if minigame.is_solved or breaker.is_powered:
-		print("TEST FAIL: wrong wiring completed the circuit")
+	# --- Two fuses power the mansion; keypad PIN opens the front doors ---
+	var keypad: Keypad = _find_all(main, "Keypad")[0]
+	if keypad.powered:
+		print("TEST FAIL: keypad live before power was restored")
 		quit(1)
 		return
-	for wire_name in names:
-		minigame.connect_wire(wire_name, minigame._mapping[wire_name])
+	var fuse_b: Grabbable = null
+	for f in get_nodes_in_group("fuses"):
+		if f.name == "Fuse_B":
+			fuse_b = f
+	player.teleport(fuse_b.global_position + Vector3(0, 0, 1.0))
+	for i in 10:
+		await physics_frame
+	player.pick_up(fuse_b)
+	breaker.request_install(player)  # the panel's socket-click path
+	await process_frame
+	if breaker.is_powered or breaker.fuses_installed != 1 or not player.inventory.is_empty():
+		print("TEST FAIL: first fuse install state wrong")
+		quit(1)
+		return
+	var fuse_a_world: Grabbable = get_nodes_in_group("fuses")[0]
+	player.teleport(fuse_a_world.global_position + Vector3(0, 0, 1.0))
+	for i in 10:
+		await physics_frame
+	player.pick_up(fuse_a_world)
+	breaker.request_install(player)
 	for i in 90:
 		await physics_frame
-	if not (minigame.is_solved and breaker.is_powered and not paused and gm.state == GameManager.State.PLAYING):
-		print("TEST FAIL: correct wiring did not power/start the run")
+	if not (breaker.is_powered and not paused and gm.state == GameManager.State.PLAYING):
+		print("TEST FAIL: two fuses did not power/start the run")
 		quit(1)
 		return
+	if not keypad.powered:
+		print("TEST FAIL: power did not wake the keypad")
+		quit(1)
+		return
+	if keypad.try_pin("0000"):
+		print("TEST FAIL: keypad accepted a wrong code")
+		quit(1)
+		return
+	if not keypad.try_pin("%04d" % gen.front_door_pin):
+		print("TEST FAIL: keypad rejected the ledger code")
+		quit(1)
+		return
+	for i in 20:
+		await physics_frame
+	var front_doors_open := 0
+	for d in hinged:
+		if absf(d.position.z - 15.0) < 0.2 and absf(d.position.x) < 1.5 and d.is_open:
+			front_doors_open += 1
+	if front_doors_open < 2:
+		print("TEST FAIL: PIN did not open both front doors")
+		quit(1)
+		return
+	# Ledger notebook stores the code in the notes.
+	var notebooks := _find_all(main, "NotebookPickup")
+	if notebooks.size() != 1:
+		print("TEST FAIL: expected one notebook in the junk")
+		quit(1)
+		return
+	notebooks[0].interact(player)
+	var pin_note_found := false
+	for entry in PlayerNotes.entries:
+		if ("%04d" % gen.front_door_pin) in entry:
+			pin_note_found = true
+	if not pin_note_found:
+		print("TEST FAIL: notebook did not record the door code")
+		quit(1)
+		return
+	print("fuse power + keypad + notebook OK")
 
 	# --- Free-angle swivel: adjust moves smoothly, release snaps to 15° ---
 	var swivel := _mirror_near(mirrors, route["mirrors"][0])
@@ -137,7 +227,7 @@ func _run() -> void:
 		await physics_frame
 	player.pick_up(gear_by_teeth[12])
 	socket8.interact(player)
-	if clock.is_running or socket8.gear != gear_by_teeth[12] or player.held_item != null:
+	if clock.is_running or socket8.gear != gear_by_teeth[12] or not player.inventory.is_empty():
 		print("TEST FAIL: wrong-gear insertion behaved unexpectedly")
 		quit(1)
 		return
@@ -149,18 +239,20 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# Correct arrangement.
+	# Correct arrangement (request_seat is the chooser's replicated path;
+	# a headless test cannot click the popup).
 	for s in sockets:
 		var gear: Grabbable = gear_by_teeth[s.required_teeth]
-		player.teleport(gear.global_position + Vector3(0, 0, 1.0))
-		for i in 10:
-			await physics_frame
-		player.pick_up(gear)
-		if player.held_item != gear:
-			print("TEST FAIL: could not pick up %s" % gear.display_name)
+		if not player.inventory.has(gear):
+			player.teleport(gear.global_position + Vector3(0, 0, 1.0))
+			for i in 10:
+				await physics_frame
+			player.pick_up(gear)
+		if not player.inventory.has(gear):
+			print("TEST FAIL: could not pack %s" % gear.display_name)
 			quit(1)
 			return
-		s.interact(player)
+		s.request_seat(player, gear)
 	if not clock.is_running:
 		print("TEST FAIL: clock did not start with correct gears")
 		quit(1)
@@ -199,13 +291,13 @@ func _run() -> void:
 	for i in 10:
 		await physics_frame
 	player.pick_up(battery)
-	if player.held_item != battery:
-		print("TEST FAIL: could not pick up the Heavy Battery")
+	if not player.inventory.has(battery):
+		print("TEST FAIL: could not pack the Heavy Battery")
 		quit(1)
 		return
 	var cradle: BatterySocket = emitter.get_node("Housing")
 	cradle.interact(player)
-	if not emitter.powered or player.held_item != null:
+	if not emitter.powered or not player.inventory.is_empty():
 		print("TEST FAIL: battery install did not power the emitter")
 		quit(1)
 		return
@@ -217,6 +309,19 @@ func _run() -> void:
 		await physics_frame
 	if not gm._light_done:
 		print("TEST FAIL: laser maze not solved at 45-degree alignment")
+		# Diagnose: trace each expected beam segment and report the first
+		# collider it strikes.
+		var space := player.get_world_3d().direct_space_state
+		var trace_points: Array[Vector3] = [emitter.get_node("Muzzle").global_position]
+		for m_pos in route["mirrors"]:
+			trace_points.append(m_pos + Vector3(0, 1.2, 0))
+		for i in trace_points.size() - 1:
+			var q := PhysicsRayQueryParameters3D.create(trace_points[i], trace_points[i + 1])
+			var hit := space.intersect_ray(q)
+			var label: String = "clear"
+			if not hit.is_empty():
+				label = "%s at %s" % [(hit["collider"] as Node).name, hit["position"]]
+			print("  segment %d: %s -> %s : %s" % [i, trace_points[i], trace_points[i + 1], label])
 		quit(1)
 		return
 
@@ -232,8 +337,8 @@ func _run() -> void:
 	for i in 10:
 		await physics_frame
 	player.pick_up(wrench)
-	if player.held_item != wrench:
-		print("TEST FAIL: could not pick up the released wrench")
+	if not player.inventory.has(wrench):
+		print("TEST FAIL: could not pack the released wrench")
 		quit(1)
 		return
 	valve_a.decay_time = 1.0
@@ -263,8 +368,8 @@ func _run() -> void:
 	for i in 10:
 		await physics_frame
 	player.pick_up(will)
-	if player.held_item != will:
-		print("TEST FAIL: could not pick up the Will")
+	if not player.inventory.has(will):
+		print("TEST FAIL: could not pack the Will")
 		quit(1)
 		return
 	player.teleport(Vector3(0, 0.1, 16.5))

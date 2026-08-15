@@ -1,0 +1,39 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/notebook_pickup.gd" id="1_notebook"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_leather"]
+albedo_color = Color(0.3, 0.18, 0.1, 1)
+roughness = 0.8
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pages"]
+albedo_color = Color(0.85, 0.8, 0.68, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="BoxMesh_cover"]
+material = SubResource("StandardMaterial3D_leather")
+size = Vector3(0.26, 0.05, 0.36)
+
+[sub_resource type="BoxMesh" id="BoxMesh_pages"]
+material = SubResource("StandardMaterial3D_pages")
+size = Vector3(0.23, 0.03, 0.33)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_book"]
+size = Vector3(0.3, 0.12, 0.4)
+
+[node name="NotebookPickup" type="StaticBody3D"]
+script = ExtResource("1_notebook")
+display_name = "Weathered Notebook"
+prompt_height = 0.6
+
+[node name="Cover" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.96, 0, 0.28, 0, 1, 0, -0.28, 0, 0.96, 0, 0.03, 0)
+mesh = SubResource("BoxMesh_cover")
+
+[node name="Pages" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.96, 0, 0.28, 0, 1, 0, -0.28, 0, 0.96, 0, 0.055, 0)
+mesh = SubResource("BoxMesh_pages")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 0)
+shape = SubResource("BoxShape3D_book")

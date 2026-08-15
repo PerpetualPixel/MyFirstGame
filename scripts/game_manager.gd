@@ -257,8 +257,7 @@ func _on_valves_changed() -> void:
 
 func _check_win() -> void:
 	for p in get_tree().get_nodes_in_group("players"):
-		var held: Node = p.held_item
-		if held == null or not held.is_in_group("will_items"):
+		if not p.has_method("inventory_find") or p.inventory_find("will_items") == null:
 			continue
 		for zone in _exit_zones:
 			if zone.overlaps_body(p):
@@ -322,7 +321,7 @@ func _refresh_objectives() -> void:
 	var valves_ok := _valves.size() > 0 and _valves_done >= _valves.size()
 	var will_ok := state == State.WON
 
-	_obj_breaker.text = "%s Power the Front Breakers" % _checkbox(_breaker_done)
+	_obj_breaker.text = "%s Restore Power (install 2 fuses)" % _checkbox(_breaker_done)
 	_obj_breaker.modulate = done_color if _breaker_done else Color.WHITE
 	_obj_clock.text = "%s Restore the Grandfather Clock (%d/3 gears)" % [_checkbox(_clock_done), _gears_placed]
 	_obj_clock.modulate = done_color if _clock_done else Color.WHITE

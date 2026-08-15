@@ -29,6 +29,12 @@ const BRASS_WRENCH_SCENE := preload("res://scenes/BrassWrench.tscn")
 const DOOR_SCENE := preload("res://scenes/Door.tscn")
 const ROOM_SHROUD_SCENE := preload("res://scenes/RoomShroud.tscn")
 const BIG_BATTERY_SCENE := preload("res://scenes/BigBattery.tscn")
+const CROWBAR_SCENE := preload("res://scenes/Crowbar.tscn")
+const FUSE_SCENE := preload("res://scenes/Fuse.tscn")
+const TOY_BOX_SCENE := preload("res://scenes/ToyBox.tscn")
+const KEYPAD_SCENE := preload("res://scenes/Puzzles/Keypad.tscn")
+const NOTEBOOK_SCENE := preload("res://scenes/NotebookPickup.tscn")
+const GARAGE_BUTTON_SCRIPT := preload("res://scripts/puzzles/garage_door_button.gd")
 const CLOCKWORK_SCENE := preload("res://scenes/Puzzles/ClockworkMechanism.tscn")
 const BRASS_GEAR_SCENE := preload("res://scenes/BrassGear.tscn")
 
@@ -58,12 +64,17 @@ const ROUTE_VARIANTS := [
 	},
 	{
 		"name": "parlor_loop",
-		# x=2 keeps the emitter housing and its beam line clear of the
-		# front door's walk path (door is centered at x=0).
-		"emitter": Vector3(2, 0, 13.0),
+		# The beam must cross the foyer->parlor doorway at x=0, but the
+		# emitter housing must stay out of the front door's walk line
+		# (x=0, z 5..15). So it hugs the foyer's west side firing EAST,
+		# and mirror 0 turns the beam north onto the door line. z=7.6
+		# keeps the line clear of the doorway's open panel, which sweeps
+		# x=-1.06, z 5..7.1 when the door stands open.
+		"emitter": Vector3(-3.8, 0, 7.6),
+		"emitter_yaw": -90.0,
 		"maze_cell": Vector2i(1, 1),
-		"mirrors": [Vector3(2, 0, 3), Vector3(3, 0, 3), Vector3(3, 0, 0), Vector3(0, 0, 0)],
-		"solutions": [0.0, 0.0, 90.0, 90.0],
+		"mirrors": [Vector3(0, 0, 7.6), Vector3(0, 0, 3), Vector3(3, 0, 3), Vector3(3, 0, 0), Vector3(0, 0, 0)],
+		"solutions": [0.0, 0.0, 0.0, 90.0, 90.0],
 		"screen": Vector3(0, 1.5, 1.8),
 		"doors": [[Vector2i(1, 2), Vector2i(1, 1)]],
 	},
@@ -96,10 +107,16 @@ const GEAR_SPECS := [
 
 ## The layout drawn for this run (read by tests and debug tools).
 var active_route: Dictionary
+## Seeded 4-digit front-door code (keypad + ledger notebook share it).
+var front_door_pin := 0
 var _valve_cells: Array = []
 var _clock_cell := Vector2i(1, 1)
 var _gear_cells: Array = []
 var _decoy_cell := Vector2i(2, 1)
+var _keypad: Keypad
+var _garage_button: GarageDoorButton
+var _garage_lock_lamp: OmniLight3D
+var _garage_lock_lens: StandardMaterial3D
 
 @export_group("Dimensions")
 @export var room_size: float = 10.0
@@ -161,6 +178,7 @@ func generate() -> void:
 	_generated_root.name = "Generated"
 	add_child(_generated_root)
 	_door_counter = 0
+	PlayerNotes.clear()  # fresh run, fresh notebook
 
 	var chosen_seed := generation_seed
 	if chosen_seed == 0:
@@ -220,9 +238,31 @@ func _pick_run_layout() -> void:
 		gear_pool[j] = tmp
 	_gear_cells = gear_pool.slice(0, GEAR_SPECS.size())
 
+	front_door_pin = _rng.randi_range(1000, 9999)
+
 	var decoy_options: Array = DECOY_CELL_OPTIONS.filter(
-		func(cell: Vector2i) -> bool: return cell != maze)
+		func(cell: Vector2i) -> bool:
+			# Never park the decoy mirror on the live beam corridor — at a
+			# room center it can swallow the beam before the real mirrors
+			# (the emitter fires straight through (0,2)/(2,2) on the west
+			# and east routes).
+			return cell != maze and not _near_beam_path(get_room_center(cell)))
 	_decoy_cell = decoy_options[_rng.randi_range(0, decoy_options.size() - 1)]
+
+
+## True when `point` lies within 1.5 m of any segment of the active
+## route's solved beam path (emitter -> mirrors, in the ground plane).
+func _near_beam_path(point: Vector3) -> bool:
+	var flat := Vector3(point.x, 0, point.z)
+	var pts: Array = [active_route["emitter"]] + (active_route["mirrors"] as Array)
+	for i in pts.size() - 1:
+		var a: Vector3 = pts[i]
+		var b: Vector3 = pts[i + 1]
+		var closest := Geometry3D.get_closest_point_to_segment(
+			flat, Vector3(a.x, 0, a.z), Vector3(b.x, 0, b.z))
+		if closest.distance_to(flat) < 1.5:
+			return true
+	return false
 
 
 # --- Door layout ---------------------------------------------------------
@@ -403,6 +443,8 @@ func _spawn_puzzle() -> void:
 	var emitter := LIGHT_EMITTER_SCENE.instantiate() as Node3D
 	emitter.name = "Emitter"
 	emitter.position = active_route["emitter"]
+	# Routes may aim the emitter off the default -Z (north) heading.
+	emitter.rotation.y = deg_to_rad(active_route.get("emitter_yaw", 0.0))
 	_generated_root.add_child(emitter)
 
 	# The emitter starts dead: its Heavy Battery hides in a seeded side
@@ -566,12 +608,22 @@ func _spawn_entrance() -> void:
 
 	var breaker := BREAKER_BOX_SCENE.instantiate() as BreakerBox
 	breaker.name = "Breaker"
-	# Seeded wiring: identical mapping and journal clues on every peer.
 	breaker.wiring_seed = _rng.randi()
-	breaker.position = Vector3(3.5, 0, front_z + 0.16)
+	# Mounted inside the detached garage (north wall, facing the room).
+	breaker.position = Vector3(24.5, 0, 17.85)
 	_generated_root.add_child(breaker)
-	breaker.powered.connect(left.unlock_and_open)
-	breaker.powered.connect(right.unlock_and_open)
+	# Power no longer opens the front doors directly — it wakes the keypad
+	# (and the garage door button); the doors want the 4-digit code.
+	breaker.powered.connect(_on_power_restored)
+
+	var keypad := KEYPAD_SCENE.instantiate() as Keypad
+	keypad.name = "FrontKeypad"
+	keypad.position = Vector3(2.4, 1.25, front_z + 0.12)
+	keypad.pin_code = front_door_pin
+	_generated_root.add_child(keypad)
+	keypad.access_granted.connect(left.unlock_and_open)
+	keypad.access_granted.connect(right.unlock_and_open)
+	_keypad = keypad
 
 	# Brass house number beside the breaker box.
 	var number := Label3D.new()
@@ -814,6 +866,13 @@ func _spawn_estate() -> void:
 	# Antique steam roadster on the gravel driveway.
 	_spawn_roadster(Vector3(9.5, 0, 28.5), -0.35)
 
+	# Detached garage at the driveway's end, against the east hedge line.
+	_spawn_garage()
+
+	# Toy rocket display on the far west lawn; a labeled parts crate there
+	# opens to reveal the first of the two spare fuses.
+	_spawn_toy_rocket_corner()
+
 	# Garden lamp posts along the walkway.
 	for lz in [27.5, 31.0]:
 		_add_lantern(Vector3(-1.9, 0, lz))
@@ -826,6 +885,253 @@ func _spawn_estate() -> void:
 		0.02, 0.08, Vector3.ZERO, 0.5, Color(0.65, 0.7, 0.85), 0.05, 9.0)
 	_add_particles(Vector3(0, 0.4, 29), 14, Vector3(24, 0.6, 10),
 		0.02, 0.09, Vector3.ZERO, 0.55, Color(0.65, 0.7, 0.85), 0.045, 10.0)
+
+
+## Detached garage off the driveway's east side. Houses the estate's
+## breaker box (the wiring puzzle), so restoring power means a trip
+## across the front yard. Person door on the west face toward the
+## walkway; the south rolling door is decorative and permanently down.
+func _spawn_garage() -> void:
+	var c := Vector3(22.5, 0, 20.5)
+	# Concrete slab, walls, flat roof with a small overhang.
+	_add_decor_box(c + Vector3(0, 0.03, 0), Vector3(7.4, 0.1, 6.4), _stone_material)
+	_add_prop(c + Vector3(0, 1.4, -3.0), Vector3(7.0, 2.8, 0.3), _wall_material)        # north
+	# South wall has a real vehicle opening; the rolling door fills it.
+	for wall_x in [-2.675, 2.675]:
+		_add_prop(c + Vector3(wall_x, 1.4, 3.0), Vector3(1.65, 2.8, 0.3), _wall_material)
+	_add_prop(c + Vector3(0, 2.65, 3.0), Vector3(3.7, 0.3, 0.3), _wall_material)        # lintel
+	_add_prop(c + Vector3(3.35, 1.4, 0), Vector3(0.3, 2.8, 6.3), _wall_material)        # east
+	_add_prop(c + Vector3(-3.35, 1.4, -1.85), Vector3(0.3, 2.8, 2.6), _wall_material)   # west, N of door
+	_add_prop(c + Vector3(-3.35, 1.4, 1.85), Vector3(0.3, 2.8, 2.6), _wall_material)    # west, S of door
+	_add_prop(c + Vector3(-3.35, 2.5, 0), Vector3(0.3, 0.6, 1.3), _wall_material)       # door lintel
+	# No solid roof — the isometric camera must see inside (the mansion is
+	# roofless for the same reason). A single exposed rafter carries the bulb.
+	_add_decor_box(c + Vector3(0, 2.86, 0), Vector3(7.2, 0.14, 0.18), _shelf_material)
+
+	# Side entry: plain white external door (no window), jammed shut until
+	# pried with the crowbar from the junk lot out back. White trim frame.
+	var side_door := DOOR_SCENE.instantiate() as Door
+	side_door.name = "GarageSideDoor"
+	side_door.position = c + Vector3(-3.35, 0, 0.55)
+	side_door.rotation.y = PI / 2.0
+	side_door.panel_width = 1.0
+	side_door.panel_height = 2.15
+	side_door.panel_color = Color(0.93, 0.93, 0.91)
+	side_door.display_name = "Garage Side Door"
+	side_door.locked = true
+	side_door.pry_group = "crowbars"
+	_generated_root.add_child(side_door)
+	var trim_mat := _make_material(Color(0.9, 0.9, 0.88))
+	for trim_z in [-0.66, 0.66]:
+		_add_decor_box(c + Vector3(-3.36, 1.15, trim_z), Vector3(0.34, 2.3, 0.14), trim_mat)
+	_add_decor_box(c + Vector3(-3.36, 2.36, 0), Vector3(0.34, 0.14, 1.46), trim_mat)
+
+	# Cement patio pad outside the side door, sheltered by an overhang.
+	_add_decor_box(c + Vector3(-4.3, 0.02, 0), Vector3(1.6, 0.08, 2.2), _stone_material)
+	_add_decor_box(c + Vector3(-4.05, 2.6, 0), Vector3(1.5, 0.1, 2.0), _shelf_material)
+	for post_z in [-0.85, 0.85]:
+		_add_decor_box(c + Vector3(-4.72, 1.29, post_z), Vector3(0.1, 2.52, 0.1), _iron_material)
+
+	# Rolling garage door filling the south opening: lift-able assembly
+	# (meshes + its own collision) raised by the powered wall button.
+	var roll_door := Node3D.new()
+	roll_door.name = "GarageRollDoor"
+	roll_door.position = c + Vector3(0, 0, 3.0)
+	_generated_root.add_child(roll_door)
+	var roll_panel := MeshInstance3D.new()
+	roll_panel.mesh = _get_box_mesh(Vector3(3.7, 2.5, 0.12), _shelf_material)
+	roll_panel.position = Vector3(0, 1.25, 0)
+	roll_door.add_child(roll_panel)
+	for slat_y in [0.35, 0.85, 1.35, 1.85, 2.3]:
+		var slat := MeshInstance3D.new()
+		slat.mesh = _get_box_mesh(Vector3(3.7, 0.06, 0.06), _iron_material)
+		slat.position = Vector3(0, slat_y, -0.08)
+		roll_door.add_child(slat)
+	var roll_handle := MeshInstance3D.new()
+	roll_handle.mesh = _get_box_mesh(Vector3(0.5, 0.08, 0.08), _iron_material)
+	roll_handle.position = Vector3(0, 0.55, -0.11)
+	roll_door.add_child(roll_handle)
+	var roll_body := StaticBody3D.new()
+	var roll_col := CollisionShape3D.new()
+	roll_col.shape = _get_box_shape(Vector3(3.7, 2.5, 0.12))
+	roll_col.position = Vector3(0, 1.25, 0)
+	roll_body.add_child(roll_col)
+	roll_door.add_child(roll_body)
+	for rail_x in [-1.95, 1.95]:
+		_add_decor_box(c + Vector3(rail_x, 1.35, 3.12), Vector3(0.14, 2.7, 0.14), _iron_material)
+
+	# Status lamp beside the door: red while locked, green once powered.
+	var lamp_mat := _make_material(Color(0.9, 0.1, 0.08))
+	lamp_mat.emission_enabled = true
+	lamp_mat.emission = Color(1.0, 0.05, 0.05)
+	lamp_mat.emission_energy_multiplier = 2.5
+	_add_decor_box(c + Vector3(2.55, 2.05, 2.88), Vector3(0.18, 0.18, 0.12), _iron_material)
+	_add_decor_sphere(c + Vector3(2.55, 2.05, 2.97), 0.06, lamp_mat)
+	var locked_lamp := OmniLight3D.new()
+	locked_lamp.light_color = Color(1.0, 0.12, 0.08)
+	locked_lamp.light_energy = 0.9
+	locked_lamp.omni_range = 3.2
+	locked_lamp.position = c + Vector3(2.55, 2.05, 3.4)
+	_generated_root.add_child(locked_lamp)
+	_garage_lock_lens = lamp_mat
+	_garage_lock_lamp = locked_lamp
+
+	# Interior wall button that rolls the door up once power is restored.
+	# Untyped so script-added properties resolve dynamically post-set_script.
+	var button = StaticBody3D.new()
+	button.name = "GarageDoorButton"
+	button.set_script(GARAGE_BUTTON_SCRIPT)
+	button.position = c + Vector3(1.55, 1.15, 2.72)
+	var btn_col := CollisionShape3D.new()
+	btn_col.shape = _get_box_shape(Vector3(0.3, 0.4, 0.25))
+	button.add_child(btn_col)
+	var btn_mesh := MeshInstance3D.new()
+	btn_mesh.mesh = _get_box_mesh(Vector3(0.18, 0.24, 0.1), _iron_material)
+	button.add_child(btn_mesh)
+	var btn_cap := MeshInstance3D.new()
+	btn_cap.mesh = _get_box_mesh(Vector3(0.09, 0.09, 0.06), lamp_mat)
+	btn_cap.position = Vector3(0, 0, -0.07)
+	button.add_child(btn_cap)
+	_generated_root.add_child(button)
+	button.display_name = "Garage Door Button"
+	button.roll_door = roll_door
+	_garage_button = button as GarageDoorButton
+
+	# Gravel spur linking the walkway to the garage's person door.
+	_add_decor_box(Vector3(17.3, -0.02, 20.5), Vector3(4.4, 0.08, 2.4), _cobble_material)
+
+	# Workshop dressing: bench, crate, hanging bulb with warm light.
+	_add_prop(c + Vector3(-1.6, 0.45, -2.4), Vector3(2.4, 0.9, 0.9), _table_material)
+	_add_prop(c + Vector3(2.5, 0.4, 1.7), Vector3(0.8, 0.8, 0.8), _crate_material)
+	_add_decor_cylinder(c + Vector3(0, 2.72, 0), 0.05, 0.35, _iron_material)
+	var bulb := OmniLight3D.new()
+	bulb.light_color = Color(1.0, 0.85, 0.55)
+	bulb.light_energy = 1.1
+	bulb.omni_range = 6.5
+	bulb.shadow_enabled = true
+	bulb.position = c + Vector3(0, 2.45, 0)
+	_generated_root.add_child(bulb)
+
+	# Junk lot behind (east of) the garage: a U of trash bins, boxes, and
+	# a broke-down car wrapping a small clearing against the hedges.
+	var rust := _make_material(Color(0.42, 0.2, 0.12))
+	_add_prop(Vector3(26.4, 0.45, 17.9), Vector3(0.6, 0.9, 0.6), _iron_material)   # bins, north arm
+	_add_prop(Vector3(27.3, 0.45, 17.8), Vector3(0.6, 0.9, 0.6), _iron_material)
+	_add_prop(Vector3(28.1, 0.4, 18.2), Vector3(0.8, 0.8, 0.8), _crate_material)
+	_spawn_junk_car(Vector3(27.4, 0, 21.2), rust)                                  # east arm
+	_add_prop(Vector3(27.6, 0.4, 24.6), Vector3(0.8, 0.8, 0.8), _crate_material)   # south arm
+	_add_prop(Vector3(26.6, 0.45, 25.0), Vector3(0.6, 0.9, 0.6), _iron_material)
+	_add_prop(Vector3(25.4, 0.35, 24.8), Vector3(0.7, 0.7, 0.7), _crate_material)
+
+	# Crowbar hidden at one of several seeded spots in the junk — it pries
+	# the garage's side door open.
+	var crowbar := CROWBAR_SCENE.instantiate() as Grabbable
+	crowbar.name = "Crowbar"
+	var crowbar_spots: Array[Vector3] = [
+		Vector3(26.9, 0.25, 18.6), Vector3(27.9, 0.25, 22.9), Vector3(26.2, 0.25, 24.2),
+		Vector3(23.6, 0.25, 25.2), Vector3(26.8, 0.25, 20.6),
+	]
+	crowbar.position = crowbar_spots[_rng.randi_range(0, crowbar_spots.size() - 1)]
+	crowbar.rotation.y = _rng.randf_range(0.0, TAU)
+	_generated_root.add_child(crowbar)
+
+	# The garage's spare fuse, at one of several seeded hiding spots.
+	var garage_fuse := FUSE_SCENE.instantiate() as Grabbable
+	garage_fuse.name = "Fuse_B"
+	var fuse_spots: Array[Vector3] = [
+		c + Vector3(-1.6, 0.95, -2.4),   # on the workbench
+		c + Vector3(2.5, 0.85, 1.7),     # on the crate
+		c + Vector3(2.4, 0.1, -1.6),     # floor by the cradle
+		c + Vector3(-0.7, 0.1, 2.3),     # floor by the rolling door
+	]
+	garage_fuse.position = fuse_spots[_rng.randi_range(0, fuse_spots.size() - 1)]
+	_generated_root.add_child(garage_fuse)
+
+	# Ledger notebook in the trash out back — it records the door code.
+	var notebook := NOTEBOOK_SCENE.instantiate() as NotebookPickup
+	notebook.name = "Notebook"
+	var notebook_spots: Array[Vector3] = [
+		Vector3(26.4, 0.92, 17.9),   # on a bin lid
+		Vector3(27.2, 0.05, 19.3),   # ground between bins and car
+		Vector3(27.6, 0.82, 24.6),   # atop the south crate
+	]
+	notebook.position = notebook_spots[_rng.randi_range(0, notebook_spots.size() - 1)]
+	notebook.rotation.y = _rng.randf_range(0.0, TAU)
+	notebook.note_text = "Estate ledger — front door code: %04d" % front_door_pin
+	_generated_root.add_child(notebook)
+
+
+## The fuse panel came back online: wake the keypad and garage button,
+## and flip the rolling door's status lamp from red to green.
+func _on_power_restored() -> void:
+	if _keypad:
+		_keypad.power_on()
+	if _garage_button:
+		_garage_button.power_on()
+	if _garage_lock_lens:
+		_garage_lock_lens.albedo_color = Color(0.15, 0.75, 0.25)
+		_garage_lock_lens.emission = Color(0.1, 0.9, 0.3)
+	if _garage_lock_lamp:
+		_garage_lock_lamp.light_color = Color(0.25, 1.0, 0.35)
+
+
+## Toy rocket on a launch stand, west lawn, with stenciled parts crates.
+## The openable ToyBox crate stashes Fuse_A (frozen until revealed).
+func _spawn_toy_rocket_corner() -> void:
+	var at := Vector3(-24.5, 0, 24.0)
+	var body_mat := _make_material(Color(0.85, 0.2, 0.15))
+	var nose_mat := _make_material(Color(0.9, 0.88, 0.85))
+	_add_decor_cylinder(at + Vector3(0, 0.1, 0), 0.55, 0.2, _iron_material)  # launch stand
+	_add_decor_cylinder(at + Vector3(0, 1.1, 0), 0.28, 1.8, body_mat)        # fuselage
+	var nose := MeshInstance3D.new()
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.0
+	cone.bottom_radius = 0.28
+	cone.height = 0.7
+	cone.material = nose_mat
+	nose.mesh = cone
+	nose.position = at + Vector3(0, 2.35, 0)
+	_generated_root.add_child(nose)
+	for fin_yaw in [0.0, TAU / 3.0, 2.0 * TAU / 3.0]:
+		var offset := Basis(Vector3.UP, fin_yaw) * Vector3(0.36, 0, 0)
+		_add_decor_box(at + offset + Vector3(0, 0.5, 0), Vector3(0.3, 0.8, 0.05), nose_mat, fin_yaw)
+	# Sealed sibling crate (decor) plus the openable one with the fuse.
+	_add_prop(at + Vector3(1.6, 0.25, -0.6), Vector3(0.9, 0.5, 0.55), _crate_material)
+	var rocket_label := Label3D.new()
+	rocket_label.text = "PATENT ROCKET KIT — MODEL IX"
+	rocket_label.font_size = 44
+	rocket_label.pixel_size = 0.003
+	rocket_label.modulate = Color(0.92, 0.88, 0.7)
+	rocket_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	rocket_label.position = at + Vector3(0, 2.95, 0)
+	_generated_root.add_child(rocket_label)
+
+	var toy_box := TOY_BOX_SCENE.instantiate() as ToyBox
+	toy_box.name = "ToyBox"
+	toy_box.position = at + Vector3(1.3, 0, 0.9)
+	toy_box.rotation.y = 0.35
+	_generated_root.add_child(toy_box)
+	# Untyped: the analyzer treats Grabbable and RigidBody3D as siblings,
+	# and we need RigidBody3D properties (freeze) here.
+	var fuse_a: Node3D = FUSE_SCENE.instantiate()
+	fuse_a.name = "Fuse_A"
+	fuse_a.set("freeze", true)
+	fuse_a.set("collision_layer", 0)
+	fuse_a.set("collision_mask", 0)
+	toy_box.add_child(fuse_a)
+	fuse_a.position = Vector3(0, 0.2, 0)
+	toy_box.stash = fuse_a
+
+
+## Rusted-out car on the junk lot: sunken cabin, hood ajar, one flat
+## tire lying beside it.
+func _spawn_junk_car(at: Vector3, rust: StandardMaterial3D) -> void:
+	_add_prop(at + Vector3(0, 0.55, 0), Vector3(1.35, 0.6, 2.7), rust)
+	_add_decor_box(at + Vector3(0, 1.05, 0.35), Vector3(1.2, 0.5, 1.15), _iron_material)
+	_add_decor_box(at + Vector3(-0.15, 0.92, -1.05), Vector3(1.1, 0.14, 0.7), rust, 0.35)
+	for wheel in [Vector3(0.72, 0.3, 0.95), Vector3(-0.72, 0.3, 0.95), Vector3(0.72, 0.3, -0.95)]:
+		_add_decor_cylinder(at + wheel, 0.3, 0.14, _iron_material, true, PI / 2.0)
+	_add_decor_cylinder(at + Vector3(-1.1, 0.08, -1.3), 0.3, 0.14, _iron_material)
 
 
 func _spawn_roadster(at: Vector3, yaw: float) -> void:

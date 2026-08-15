@@ -1,0 +1,49 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/grabbable.gd" id="1_grabbable"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ceramic"]
+albedo_color = Color(0.88, 0.84, 0.74, 1)
+roughness = 0.55
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_brass"]
+albedo_color = Color(0.75, 0.58, 0.25, 1)
+metallic = 0.85
+roughness = 0.3
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_body"]
+material = SubResource("StandardMaterial3D_ceramic")
+top_radius = 0.055
+bottom_radius = 0.055
+height = 0.2
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_cap"]
+material = SubResource("StandardMaterial3D_brass")
+top_radius = 0.062
+bottom_radius = 0.062
+height = 0.035
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_fuse"]
+size = Vector3(0.14, 0.28, 0.14)
+
+[node name="Fuse" type="RigidBody3D" groups=["fuses"]]
+mass = 0.8
+script = ExtResource("1_grabbable")
+display_name = "Ceramic Fuse"
+prompt_height = 0.6
+
+[node name="Body" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.14, 0)
+mesh = SubResource("CylinderMesh_body")
+
+[node name="CapTop" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.255, 0)
+mesh = SubResource("CylinderMesh_cap")
+
+[node name="CapBottom" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.025, 0)
+mesh = SubResource("CylinderMesh_cap")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.14, 0)
+shape = SubResource("BoxShape3D_fuse")

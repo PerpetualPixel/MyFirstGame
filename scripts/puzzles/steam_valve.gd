@@ -104,5 +104,5 @@ func _apply_reset() -> void:
 
 
 func _has_wrench(by: Node3D) -> bool:
-	var held: Node = by.get("held_item")
-	return held != null and held.is_in_group("wrenches")
+	return by != null and by.has_method("inventory_find") \
+		and by.inventory_find("wrenches") != null
