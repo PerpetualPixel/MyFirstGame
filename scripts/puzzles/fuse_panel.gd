@@ -151,30 +151,25 @@ func _build_sockets() -> void:
 		_hotspots.add_child(marker)
 		_socket_markers.append(marker)
 
-		# Seated cartridge fuse, hidden until installed: glass body + caps.
-		var sprite := Control.new()
-		sprite.position = SOCKET_POS[i]
+		# Seated cartridge fuse, hidden until installed. The sprite is a
+		# straight crop of an intact cartridge from the SAME painting
+		# (the DINING ROOM row), so it matches its neighbors exactly.
+		var sprite: Control
+		if ResourceLoader.exists("res://assets/ui/FuseCartridge.png"):
+			var tex := TextureRect.new()
+			tex.texture = load("res://assets/ui/FuseCartridge.png")
+			tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tex.stretch_mode = TextureRect.STRETCH_SCALE
+			tex.size = Vector2(103, 34)
+			sprite = tex
+		else:
+			var block := ColorRect.new()
+			block.color = Color(0.78, 0.85, 0.88)
+			block.size = Vector2(103, 34)
+			sprite = block
+		sprite.position = SOCKET_POS[i] - sprite.size / 2.0
 		sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		sprite.visible = false
-		var body := Panel.new()
-		var glass := StyleBoxFlat.new()
-		glass.bg_color = Color(0.78, 0.85, 0.88, 0.95)
-		glass.border_color = Color(0.45, 0.5, 0.55)
-		glass.set_border_width_all(1)
-		glass.set_corner_radius_all(7)
-		body.add_theme_stylebox_override("panel", glass)
-		body.size = Vector2(86, 18)
-		body.position = Vector2(-43, -9)
-		sprite.add_child(body)
-		for cap_x in [-43.0, 29.0]:
-			var cap := Panel.new()
-			var brass := StyleBoxFlat.new()
-			brass.bg_color = Color(0.62, 0.44, 0.22)
-			brass.set_corner_radius_all(3)
-			cap.add_theme_stylebox_override("panel", brass)
-			cap.size = Vector2(14, 22)
-			cap.position = Vector2(cap_x, -11)
-			sprite.add_child(cap)
 		_hotspots.add_child(sprite)
 		_fuse_sprites.append(sprite)
 	_update_hint(0)

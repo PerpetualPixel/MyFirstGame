@@ -12,9 +12,12 @@ extends CanvasLayer
 var _collapsed := false
 var _notes_panel: PanelContainer
 var _notes_list: VBoxContainer
-var _inv_slots: Array[PanelContainer] = []
+var _inv_slots: Array[InventorySlot] = []
 var _inv_signature := ""
 var _fuse_icon: Texture2D
+var _crowbar_icon: Texture2D
+var _slot_style_normal: StyleBoxFlat
+var _slot_style_selected: StyleBoxFlat
 
 
 func _ready() -> void:
@@ -64,6 +67,18 @@ func _apply_scale(value: float) -> void:
 func _build_inventory_bar() -> void:
 	if ResourceLoader.exists("res://assets/ui/FuseIcon.png"):
 		_fuse_icon = load("res://assets/ui/FuseIcon.png")
+	if ResourceLoader.exists("res://assets/ui/CrowbarIcon.png"):
+		_crowbar_icon = load("res://assets/ui/CrowbarIcon.png")
+	_slot_style_normal = StyleBoxFlat.new()
+	_slot_style_normal.bg_color = Color(0.06, 0.05, 0.04, 0.8)
+	_slot_style_normal.border_color = Color(0.5, 0.4, 0.2, 0.8)
+	_slot_style_normal.set_border_width_all(2)
+	_slot_style_normal.set_corner_radius_all(6)
+	_slot_style_selected = _slot_style_normal.duplicate() as StyleBoxFlat
+	_slot_style_selected.border_color = Color(1.0, 0.85, 0.4)
+	_slot_style_selected.set_border_width_all(3)
+	_slot_style_selected.bg_color = Color(0.12, 0.1, 0.06, 0.9)
+
 	var bar := HBoxContainer.new()
 	bar.add_theme_constant_override("separation", 8)
 	bar.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
@@ -72,27 +87,52 @@ func _build_inventory_bar() -> void:
 	bar.offset_bottom = -16.0
 	add_child(bar)
 	for i in 3:
-		var slot := PanelContainer.new()
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color(0.06, 0.05, 0.04, 0.8)
-		style.border_color = Color(0.5, 0.4, 0.2, 0.8)
-		style.set_border_width_all(2)
-		style.set_corner_radius_all(6)
-		slot.add_theme_stylebox_override("panel", style)
+		var slot := InventorySlot.new()
+		slot.slot_index = i
+		slot.add_theme_stylebox_override("panel", _slot_style_normal)
 		slot.custom_minimum_size = Vector2(76, 76)
+		slot.slot_clicked.connect(_on_slot_clicked)
+		slot.swap_requested.connect(_on_slot_swap)
+		slot.drop_to_world.connect(_on_slot_drop_to_world)
 		bar.add_child(slot)
 		_inv_slots.append(slot)
 
 
-func _refresh_inventory_bar() -> void:
-	var local: Node = null
+func _local_player() -> Node:
 	for player in get_tree().get_nodes_in_group("players"):
 		if player.is_local_player():
-			local = player
+			return player
+	return null
+
+
+func _on_slot_clicked(index: int) -> void:
+	var local := _local_player()
+	if local == null:
+		return
+	if index < local.inventory.size():
+		local.selected_slot = -1 if local.selected_slot == index else index
+		_inv_signature = ""  # force refresh
+
+
+func _on_slot_swap(from_index: int, to_index: int) -> void:
+	var local := _local_player()
+	if local:
+		local.request_swap(from_index, to_index)
+
+
+func _on_slot_drop_to_world(index: int) -> void:
+	var local := _local_player()
+	if local:
+		local.request_drop(index)
+
+
+func _refresh_inventory_bar() -> void:
+	var local := _local_player()
 	if local == null or local.get("inventory") == null:
 		return
 	var items: Array = local.inventory
-	var signature := ""
+	var selected: int = local.get("selected_slot")
+	var signature := "%d|" % selected
 	for item in items:
 		if is_instance_valid(item):
 			signature += item.name + ";"
@@ -100,25 +140,37 @@ func _refresh_inventory_bar() -> void:
 		return
 	_inv_signature = signature
 	for i in _inv_slots.size():
-		for child in _inv_slots[i].get_children():
+		var slot := _inv_slots[i]
+		for child in slot.get_children():
 			child.queue_free()
+		slot.add_theme_stylebox_override("panel",
+			_slot_style_selected if i == selected else _slot_style_normal)
 		if i >= items.size() or not is_instance_valid(items[i]):
+			slot.item_name = ""
 			continue
 		var item: Node = items[i]
-		if item.is_in_group("fuses") and _fuse_icon != null:
+		slot.item_name = str(item.get("display_name"))
+		var icon_tex: Texture2D = null
+		if item.is_in_group("fuses"):
+			icon_tex = _fuse_icon
+		elif item.is_in_group("crowbars"):
+			icon_tex = _crowbar_icon
+		if icon_tex != null:
 			var icon := TextureRect.new()
-			icon.texture = _fuse_icon
+			icon.texture = icon_tex
 			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			_inv_slots[i].add_child(icon)
 		else:
 			var tag := Label.new()
-			tag.text = str(item.get("display_name"))
+			tag.text = slot.item_name
 			tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			tag.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 			tag.autowrap_mode = TextServer.AUTOWRAP_WORD
 			tag.add_theme_font_size_override("font_size", 12)
 			tag.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7))
+			tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			_inv_slots[i].add_child(tag)
 
 

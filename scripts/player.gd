@@ -91,6 +91,9 @@ static func shake(amount: float, at: Vector3) -> void:
 ## interaction sites. [Q] drops the most recently taken item.
 const INVENTORY_SIZE := 3
 var inventory: Array[Grabbable] = []
+## HUD slot highlighted via the 1/2/3 keys; [Q] drops it (else the
+## newest item). Local-machine concept — never replicated.
+var selected_slot := -1
 
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
@@ -536,10 +539,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif target:
 			request_interact(target)
 	elif event.is_action_pressed("drop"):
-		if NetworkSession.multiplayer_active:
-			_net_drop.rpc()
-		else:
-			drop_held()
+		var drop_index := selected_slot if selected_slot >= 0 and selected_slot < inventory.size() \
+			else inventory.size() - 1
+		request_drop(drop_index)
+		selected_slot = -1
+	elif event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode in [KEY_1, KEY_2, KEY_3, KEY_KP_1, KEY_KP_2, KEY_KP_3]:
+		# 1/2/3 select a pack slot (toggle off when re-pressed).
+		var slot := 0
+		match event.keycode:
+			KEY_1, KEY_KP_1: slot = 0
+			KEY_2, KEY_KP_2: slot = 1
+			KEY_3, KEY_KP_3: slot = 2
+		if slot < inventory.size():
+			selected_slot = -1 if selected_slot == slot else slot
+			get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ping"):
 		var at := global_position - global_transform.basis.z * 1.5
 		if NetworkSession.multiplayer_active:
@@ -655,10 +669,57 @@ func pick_up(item: Grabbable) -> void:
 
 ## [Q]: drop the most recently taken item back into the world.
 func drop_held() -> void:
-	if inventory.is_empty():
+	drop_at(inventory.size() - 1)
+
+
+## Drop the pack item at `index` (from the HUD's selected slot or a
+## drag out of the bar).
+func drop_at(index: int) -> void:
+	if index < 0 or index >= inventory.size():
 		return
-	var item: Grabbable = inventory.pop_back()
+	var item: Grabbable = inventory[index]
+	inventory.remove_at(index)
 	item.release()
+	if selected_slot == index:
+		selected_slot = -1
+
+
+func request_drop(index: int) -> void:
+	if NetworkSession.multiplayer_active:
+		_net_drop_at.rpc(index)
+	else:
+		drop_at(index)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _net_drop_at(index: int) -> void:
+	if NetworkSession.multiplayer_active:
+		var sender := multiplayer.get_remote_sender_id()
+		if sender != 0 and sender != get_multiplayer_authority():
+			return
+	drop_at(index)
+
+
+## Reorder pack slots (HUD drag). Replicated so slot indices stay in
+## sync across peers — index-based drops depend on it.
+func request_swap(a: int, b: int) -> void:
+	if NetworkSession.multiplayer_active:
+		_net_swap.rpc(a, b)
+	else:
+		swap_slots(a, b)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _net_swap(a: int, b: int) -> void:
+	swap_slots(a, b)
+
+
+func swap_slots(a: int, b: int) -> void:
+	if a == b or a < 0 or b < 0 or a >= inventory.size() or b >= inventory.size():
+		return
+	var tmp := inventory[a]
+	inventory[a] = inventory[b]
+	inventory[b] = tmp
 
 
 func inventory_full() -> bool:

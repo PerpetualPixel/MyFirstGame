@@ -113,6 +113,27 @@ func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
 		_close_ui()
+		return
+	# Full keyboard entry: number row + numpad, Backspace/Delete to back
+	# up, Enter to submit.
+	if event is InputEventKey and event.pressed and not event.echo:
+		var handled := true
+		match event.keycode:
+			KEY_0, KEY_KP_0: _on_key("0")
+			KEY_1, KEY_KP_1: _on_key("1")
+			KEY_2, KEY_KP_2: _on_key("2")
+			KEY_3, KEY_KP_3: _on_key("3")
+			KEY_4, KEY_KP_4: _on_key("4")
+			KEY_5, KEY_KP_5: _on_key("5")
+			KEY_6, KEY_KP_6: _on_key("6")
+			KEY_7, KEY_KP_7: _on_key("7")
+			KEY_8, KEY_KP_8: _on_key("8")
+			KEY_9, KEY_KP_9: _on_key("9")
+			KEY_BACKSPACE, KEY_DELETE: _on_key("BACK")
+			KEY_ENTER, KEY_KP_ENTER: _on_key("ENTER")
+			_: handled = false
+		if handled:
+			get_viewport().set_input_as_handled()
 
 
 func _on_key(key: String) -> void:
@@ -124,6 +145,11 @@ func _on_key(key: String) -> void:
 			AudioSynthesizer.play_ui("tick", -12.0, 0.9)
 			_entered = ""
 			_refresh_display()
+		"BACK":
+			if _entered.length() > 0:
+				_entered = _entered.substr(0, _entered.length() - 1)
+				AudioSynthesizer.play_ui("tick", -12.0, 0.85)
+				_refresh_display()
 		"ENTER":
 			_try_pin()
 		_:
@@ -232,13 +258,18 @@ func _build_overlay() -> void:
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(dim)
 
+	# Explicit anchors + all four offsets: PRESET_CENTER with a minimum
+	# size anchored the rect at screen center extending right/down,
+	# which rendered the art zoomed and cut off.
 	var board := Control.new()
-	board.set_anchors_preset(Control.PRESET_CENTER)
-	board.position = Vector2.ZERO
-	board.custom_minimum_size = Vector2(1056, 576)
-	board.size = Vector2(1056, 576)
+	board.anchor_left = 0.5
+	board.anchor_top = 0.5
+	board.anchor_right = 0.5
+	board.anchor_bottom = 0.5
 	board.offset_left = -528
 	board.offset_top = -288
+	board.offset_right = 528
+	board.offset_bottom = 288
 	root.add_child(board)
 
 	var backdrop := TextureRect.new()
