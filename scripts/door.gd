@@ -115,6 +115,7 @@ func set_open(open: bool) -> void:
 	_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_tween.tween_property(self, "rotation:y", target, swing_time)
 	AudioSynthesizer.play_at("tick", global_position, -6.0, 0.7)  # crisp latch click
+	AudioSynthesizer.play_at("door_creak", global_position, -10.0, 1.0 if open else 0.85)
 	Player.shake(0.12, global_position)
 	_dust_puff(global_position + global_transform.basis.x * (panel_width / 2.0), 10)
 	door_toggled.emit(open)

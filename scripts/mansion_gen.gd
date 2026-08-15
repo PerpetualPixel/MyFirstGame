@@ -40,44 +40,57 @@ const CLOCKWORK_SCENE := preload("res://scenes/Puzzles/ClockworkMechanism.tscn")
 const BRASS_GEAR_SCENE := preload("res://scenes/BrassGear.tscn")
 
 ## Three hand-authored, guaranteed-solvable laser routes; one is drawn per
-## run. Every route ends with a mirror at the parlor center turning the
-## beam north through the vault gate's slit. "solutions" are the solved
-## root yaws in degrees (panels are mounted at 45 degrees locally), so
-## different routes need genuinely different alignments.
+## run. EVERY mirror stands in a room corner (CORNER_INSET from both
+## walls) so the rooms' walkways and doorways stay clear. The geometry
+## is built on a 30-degree grid: legs run along OUTER walls (0/90 deg,
+## never a door swing in the way) or cross a doorway diagonally from a
+## corner on that wall through the door's center to the mirrored corner
+## of the next room (exactly 60 deg off the wall) — so every mirror's
+## solved yaw lands on a 15-degree detent (computed at run time by
+## _route_solutions, never hand-typed). Doorways on the beam route are
+## open archways: a hinged panel swung the wrong way would clip the
+## diagonal. All routes end through the vault gate's slit onto a
+## receiver in a vault corner. Every turn is at least 60 degrees: a
+## shallow (30-degree) turn means a 15-degree grazing hit whose usable
+## panel width is a hand-span, and bounce-to-bounce hit-point drift can
+## walk the beam right off it.
+const CORNER_INSET := 1.83
 const ROUTE_VARIANTS := [
 	{
-		"name": "west_maze",
-		"emitter": Vector3(-10, 0, 12.5),
+		# Emitter in the SW room's SW corner fires north up the west outer
+		# wall; the beam zig-zags up the west wing, hops the archway into
+		# the parlor, climbs its west wall, and cuts through the vault gate.
+		"name": "west_wing",
+		"emitter": Vector3(-13.17, 0, 13.17),
+		"emitter_yaw": 0.0,
 		"maze_cell": Vector2i(0, 1),
-		"mirrors": [Vector3(-10, 0, 3), Vector3(-7, 0, 3), Vector3(-7, 0, 0), Vector3(0, 0, 0)],
-		"solutions": [0.0, 0.0, 0.0, 0.0],
-		"screen": Vector3(-10, 1.5, 1.2),
+		"mirrors": [Vector3(-13.17, 0, 6.83), Vector3(-6.83, 0, 3.17), Vector3(-6.83, 0, -3.17), Vector3(-3.17, 0, 3.17), Vector3(-3.17, 0, -3.17)],
+		"receiver": Vector3(3.17, 0, -6.83),
 		"doors": [[Vector2i(0, 2), Vector2i(0, 1)], [Vector2i(0, 1), Vector2i(1, 1)]],
 	},
 	{
-		"name": "east_maze",
-		"emitter": Vector3(10, 0, 12.5),
+		# Mirror image up the east wing.
+		"name": "east_wing",
+		"emitter": Vector3(13.17, 0, 13.17),
+		"emitter_yaw": 0.0,
 		"maze_cell": Vector2i(2, 1),
-		"mirrors": [Vector3(10, 0, 3), Vector3(7, 0, 3), Vector3(7, 0, 0), Vector3(0, 0, 0)],
-		"solutions": [90.0, 90.0, 90.0, 90.0],
-		"screen": Vector3(10, 1.5, 1.2),
+		"mirrors": [Vector3(13.17, 0, 6.83), Vector3(6.83, 0, 3.17), Vector3(6.83, 0, -3.17), Vector3(3.17, 0, 3.17), Vector3(3.17, 0, -3.17)],
+		"receiver": Vector3(-3.17, 0, -6.83),
 		"doors": [[Vector2i(2, 2), Vector2i(2, 1)], [Vector2i(2, 1), Vector2i(1, 1)]],
 	},
 	{
-		"name": "parlor_loop",
-		# The beam must cross the foyer->parlor doorway at x=0, but the
-		# emitter housing must stay out of the front door's walk line
-		# (x=0, z 5..15). So it hugs the foyer's west side firing EAST,
-		# and mirror 0 turns the beam north onto the door line. z=7.6
-		# keeps the line clear of the doorway's open panel, which sweeps
-		# x=-1.06, z 5..7.1 when the door stands open.
-		"emitter": Vector3(-3.8, 0, 7.6),
+		# Emitter in the foyer's NW corner fires east along the parlor
+		# wall; the beam dives through the parlor archway and rings all
+		# four parlor corners before the vault gate. The parlor's east
+		# doorway is an archway too so no swung panel can cut the leg
+		# along that wall.
+		"name": "parlor_ring",
+		"emitter": Vector3(-3.17, 0, 6.83),
 		"emitter_yaw": -90.0,
 		"maze_cell": Vector2i(1, 1),
-		"mirrors": [Vector3(0, 0, 7.6), Vector3(0, 0, 3), Vector3(3, 0, 3), Vector3(3, 0, 0), Vector3(0, 0, 0)],
-		"solutions": [0.0, 0.0, 0.0, 90.0, 90.0],
-		"screen": Vector3(0, 1.5, 1.8),
-		"doors": [[Vector2i(1, 2), Vector2i(1, 1)]],
+		"mirrors": [Vector3(3.17, 0, 6.83), Vector3(-3.17, 0, 3.17), Vector3(3.17, 0, 3.17), Vector3(3.17, 0, -3.17), Vector3(-3.17, 0, -3.17)],
+		"receiver": Vector3(3.17, 0, -6.83),
+		"doors": [[Vector2i(1, 2), Vector2i(1, 1)], [Vector2i(1, 1), Vector2i(2, 1)]],
 	},
 ]
 ## Adjacent room pairs: the pair's FIRST room becomes the hydraulic
@@ -87,7 +100,9 @@ const VALVE_PAIR_OPTIONS := [
 	[Vector2i(2, 1), Vector2i(2, 2)], [Vector2i(0, 1), Vector2i(0, 2)],
 	[Vector2i(2, 0), Vector2i(2, 1)], [Vector2i(0, 0), Vector2i(0, 1)],
 ]
-const CLOCK_CELL_OPTIONS: Array[Vector2i] = [Vector2i(1, 1), Vector2i(2, 0), Vector2i(0, 0)]
+## Never the central parlor: the beam routes park mirrors in its
+## corners, and the clock stands on a room's south wall beside one.
+const CLOCK_CELL_OPTIONS: Array[Vector2i] = [Vector2i(2, 0), Vector2i(0, 0)]
 const GEAR_CELL_OPTIONS: Array[Vector2i] = [
 	Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(2, 0),
 	Vector2i(2, 1), Vector2i(2, 2), Vector2i(1, 2),
@@ -96,7 +111,6 @@ const DECOY_CELL_OPTIONS: Array[Vector2i] = [
 	Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2),
 	Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2),
 ]
-const TABLE_CELLS: Array[Vector2i] = [Vector2i(0, 0), Vector2i(2, 0), Vector2i(2, 2)]
 ## teeth, label, mesh radius (hiding rooms are drawn per run)
 const GEAR_SPECS := [
 	[8, "Small Gear (8-tooth)", 0.2],
@@ -112,6 +126,9 @@ var active_route: Dictionary
 ## Seeded 4-digit front-door code (keypad + ledger notebook share it).
 var front_door_pin := 0
 var _valve_cells: Array = []
+## Wall spots where hauled mirrors (and the decoy) were parked this run;
+## furniture keeps clear of them.
+var _mirror_parking: Array[Vector3] = []
 var _clock_cell := Vector2i(1, 1)
 var _gear_cells: Array = []
 var _decoy_cell := Vector2i(2, 1)
@@ -218,10 +235,13 @@ func get_spawn_position() -> Vector3:
 ## Combined with door carving, wiring, and spawn rotations, no two seeds
 ## play the same.
 func _pick_run_layout() -> void:
+	var picked: Dictionary
 	if route_override >= 0 and route_override < ROUTE_VARIANTS.size():
-		active_route = ROUTE_VARIANTS[route_override]
+		picked = ROUTE_VARIANTS[route_override]
 	else:
-		active_route = ROUTE_VARIANTS[_rng.randi_range(0, ROUTE_VARIANTS.size() - 1)]
+		picked = ROUTE_VARIANTS[_rng.randi_range(0, ROUTE_VARIANTS.size() - 1)]
+	active_route = picked.duplicate()
+	active_route["solutions"] = _route_solutions(picked)
 	var maze: Vector2i = active_route["maze_cell"]
 
 	var pair_options: Array = VALVE_PAIR_OPTIONS.filter(
@@ -258,11 +278,34 @@ func _pick_run_layout() -> void:
 	_decoy_cell = decoy_options[_rng.randi_range(0, decoy_options.size() - 1)]
 
 
+## Solved root yaw (degrees) for each of a route's mirrors, derived from
+## the beam geometry: the panel is mounted at +45 deg on the root and its
+## normal must bisect the incoming and outgoing legs. With every leg on
+## the 30-degree grid the results land on 15-degree detents (asserted).
+static func _route_solutions(route: Dictionary) -> Array:
+	var pts: Array = [route["emitter"]] + (route["mirrors"] as Array) + [route["receiver"]]
+	var solutions: Array = []
+	for i in (route["mirrors"] as Array).size():
+		var a: Vector3 = pts[i]
+		var b: Vector3 = pts[i + 1]
+		var c: Vector3 = pts[i + 2]
+		var d_in := Vector3(b.x - a.x, 0, b.z - a.z).normalized()
+		var d_out := Vector3(c.x - b.x, 0, c.z - b.z).normalized()
+		var n := (d_out - d_in).normalized()
+		# Panel normal in world = (sin(45+yaw), 0, cos(45+yaw)).
+		var yaw := rad_to_deg(atan2(n.x, n.z)) - 45.0
+		yaw = fposmod(yaw, 180.0)
+		var detent := roundf(yaw / 15.0) * 15.0
+		assert(absf(yaw - detent) < 0.05, "route %s mirror %d solution %.2f is off the 15-degree grid" % [route["name"], i, yaw])
+		solutions.append(detent)
+	return solutions
+
+
 ## True when `point` lies within 1.5 m of any segment of the active
-## route's solved beam path (emitter -> mirrors, in the ground plane).
+## route's solved beam path (emitter -> mirrors -> receiver, ground plane).
 func _near_beam_path(point: Vector3) -> bool:
 	var flat := Vector3(point.x, 0, point.z)
-	var pts: Array = [active_route["emitter"]] + (active_route["mirrors"] as Array)
+	var pts: Array = [active_route["emitter"]] + (active_route["mirrors"] as Array) + [active_route["receiver"]]
 	for i in pts.size() - 1:
 		var a: Vector3 = pts[i]
 		var b: Vector3 = pts[i + 1]
@@ -476,19 +519,13 @@ func _spawn_puzzle() -> void:
 	battery.name = "HeavyBattery"
 	_generated_root.add_child(battery)
 
-	# Maze obstacles: this route's tall privacy screen forces the bounces;
-	# a high bookcase breaks sightlines in the central parlor.
-	_add_prop(active_route["screen"], Vector3(3, 3, 0.4), _shelf_material)
-	_add_prop(Vector3(2.0, 1.5, -2.0), Vector3(2.2, 3, 0.5), _shelf_material)
 	# World spots the mirrors' wall placement must keep clear of (the
-	# clock, press, and cage are appended as they spawn below).
-	var reserved: Array[Vector3] = [
-		active_route["emitter"], active_route["screen"], Vector3(2.0, 0, -2.0),
-	]
+	# clock, press, cage, and gears are appended as they spawn below).
+	var reserved: Array[Vector3] = [active_route["emitter"], active_route["receiver"]]
 
 	var receiver := LIGHT_RECEIVER_SCENE.instantiate() as Node3D
 	receiver.name = "Receiver"
-	receiver.position = get_room_center(VAULT_STUDY_CELL) + Vector3(0, 0, 3.0)
+	receiver.position = active_route["receiver"]
 	_generated_root.add_child(receiver)
 	receiver.puzzle_completed.connect(func() -> void: puzzle_solved.emit())
 
@@ -515,7 +552,7 @@ func _spawn_puzzle() -> void:
 	# Against the north wall, hard up beside the battery cage's west wall
 	# (cage x 2.36..4.74), so the console stands right next to the
 	# hydraulic gate it controls. Faces into the room.
-	machine.position = press_room + Vector3(1.2, 0, -4.35)
+	machine.position = press_room + Vector3(1.3, 0, -4.35)
 	_generated_root.add_child(machine)
 	reserved.append(machine.position)
 	# The vault gate's right-hand lamp now tracks the hydraulics.
@@ -566,7 +603,9 @@ func _spawn_puzzle() -> void:
 
 	for i in GEAR_SPECS.size():
 		var spec: Array = GEAR_SPECS[i]
-		var gear_at := get_room_center(_gear_cells[i]) + Vector3(-1.8, 0.3, -4.2)
+		# Just west of the north door's swing line, in front of the wall
+		# props' slot, clear of the corner mirror spot.
+		var gear_at := get_room_center(_gear_cells[i]) + Vector3(-1.5, 0.3, -3.55)
 		_spawn_gear(spec[0], spec[1], spec[2], gear_at, "Gear_%d" % i)
 		reserved.append(gear_at)
 
@@ -590,8 +629,11 @@ const PERIMETER_SPOTS: Array[Vector3] = [
 	Vector3(-4.0, 0, -2.0), Vector3(-4.0, 0, 2.0),   # west wall
 	Vector3(4.0, 0, -2.0), Vector3(4.0, 0, 2.0),     # east wall
 ]
-## Minimum clearance between a parked mirror and anything reserved.
+## Minimum clearance between a parked mirror and anything reserved, and
+## the tighter one against other mirrors' beam spots (two slim mirrors
+## only need a metre between centers).
 const MIRROR_CLEARANCE := 1.7
+const MIRROR_TO_MIRROR := 1.15
 
 
 func _cell_of(pos: Vector3) -> Vector2i:
@@ -607,8 +649,9 @@ func _cell_of(pos: Vector3) -> Vector2i:
 ## beam path, useless as ever.
 func _spawn_mirrors(reserved: Array[Vector3]) -> void:
 	var mirror_spots: Array = active_route["mirrors"]
+	var targets: Array[Vector3] = []
 	for spot in mirror_spots:
-		reserved.append(spot)
+		targets.append(spot)
 
 	var hauled: Array[bool] = []
 	for i in mirror_spots.size():
@@ -624,7 +667,7 @@ func _spawn_mirrors(reserved: Array[Vector3]) -> void:
 		var mirror := ROTATING_MIRROR_SCENE.instantiate() as RotatingMirror
 		mirror.name = "Mirror_%d" % i
 		mirror.rotation.y = deg_to_rad(15.0 * float(_rng.randi_range(0, 23)))
-		var parked: Array = _pick_perimeter_spot(_cell_of(target), reserved) if hauled[i] else []
+		var parked: Array = _pick_perimeter_spot(_cell_of(target), reserved, targets) if hauled[i] else []
 		if parked.is_empty():
 			# Fixed on its beam spot (or no free wall spot: never break the route).
 			mirror.position = target
@@ -632,6 +675,7 @@ func _spawn_mirrors(reserved: Array[Vector3]) -> void:
 			mirror.make_pushable(target)
 			mirror.position = parked[0]
 			reserved.append(parked[0])
+			_mirror_parking.append(parked[0])
 		_generated_root.add_child(mirror)
 
 	# Free-roaming: haulable anywhere with no ring, so it looks exactly
@@ -639,8 +683,9 @@ func _spawn_mirrors(reserved: Array[Vector3]) -> void:
 	var decoy := ROTATING_MIRROR_SCENE.instantiate() as RotatingMirror
 	decoy.name = "Mirror_Decoy"
 	decoy.make_free()
-	var decoy_spot: Array = _pick_perimeter_spot(_decoy_cell, reserved)
+	var decoy_spot: Array = _pick_perimeter_spot(_decoy_cell, reserved, targets)
 	decoy.position = decoy_spot[0] if not decoy_spot.is_empty() else get_room_center(_decoy_cell)
+	_mirror_parking.append(decoy.position)
 	decoy.rotation.y = deg_to_rad(15.0 * float(_rng.randi_range(0, 23)))
 	_generated_root.add_child(decoy)
 
@@ -648,7 +693,7 @@ func _spawn_mirrors(reserved: Array[Vector3]) -> void:
 ## A seeded free wall spot in `cell`: off the beam path and at least
 ## MIRROR_CLEARANCE from everything reserved. Returns [pos] or [] if the
 ## room's walls are full.
-func _pick_perimeter_spot(cell: Vector2i, reserved: Array[Vector3]) -> Array:
+func _pick_perimeter_spot(cell: Vector2i, reserved: Array[Vector3], targets: Array[Vector3]) -> Array:
 	var center := get_room_center(cell)
 	var options: Array[Vector3] = []
 	for offset in PERIMETER_SPOTS:
@@ -660,6 +705,11 @@ func _pick_perimeter_spot(cell: Vector2i, reserved: Array[Vector3]) -> Array:
 			if Vector2(p.x - r.x, p.z - r.z).length() < MIRROR_CLEARANCE:
 				clear = false
 				break
+		if clear:
+			for t in targets:
+				if Vector2(p.x - t.x, p.z - t.z).length() < MIRROR_TO_MIRROR:
+					clear = false
+					break
 		if clear:
 			options.append(p)
 	if options.is_empty():
@@ -723,19 +773,29 @@ func _spawn_gear(teeth: int, label: String, radius: float, at: Vector3, node_nam
 # --- Doors, entrance, props, shrouds -------------------------------------
 
 
+## Every carved edge gets a frame; every edge but the vault's and the
+## beam route's gets a hinged panel. Route doorways stay open archways so
+## a swung door can never clip the diagonal beam.
 func _spawn_doors() -> void:
 	var vault_edge := _edge_key(Vector2i(1, 1), VAULT_STUDY_CELL)
+	var archways := {}
+	for edge in active_route["doors"]:
+		archways[_edge_key(edge[0], edge[1])] = true
 	for z in GRID_SIZE.y:
 		for x in GRID_SIZE.x:
 			var cell := Vector2i(x, z)
 			var center := get_room_center(cell)
 			var east := cell + Vector2i(1, 0)
-			if _has_door(cell, east) and _edge_key(cell, east) != vault_edge:
-				_spawn_hinged_door(center + Vector3(room_size / 2.0, 0, 1.0), PI / 2.0)
+			var east_key := _edge_key(cell, east)
+			if _has_door(cell, east) and east_key != vault_edge:
+				if not archways.has(east_key):
+					_spawn_hinged_door(center + Vector3(room_size / 2.0, 0, 1.0), PI / 2.0)
 				_add_door_frame(center + Vector3(room_size / 2.0, 0, 0), PI / 2.0)
 			var south := cell + Vector2i(0, 1)
-			if _has_door(cell, south) and _edge_key(cell, south) != vault_edge:
-				_spawn_hinged_door(center + Vector3(-1.0, 0, room_size / 2.0), 0.0)
+			var south_key := _edge_key(cell, south)
+			if _has_door(cell, south) and south_key != vault_edge:
+				if not archways.has(south_key):
+					_spawn_hinged_door(center + Vector3(-1.0, 0, room_size / 2.0), 0.0)
 				_add_door_frame(center + Vector3(0, 0, room_size / 2.0), 0.0)
 
 
@@ -799,28 +859,264 @@ func _spawn_entrance() -> void:
 	_generated_root.add_child(number)
 
 
-func _spawn_props() -> void:
-	var crate_spots: Array[Vector3] = [
-		Vector3(3.4, 0.4, 3.2), Vector3(-3.2, 0.4, 3.5), Vector3(3.3, 0.4, -3.3),
+## Room dressing that reads "lived in" without ever costing a walkway.
+## Every piece stands in a wall FLANK SLOT: 2.2 m either side of each
+## wall's door axis, hard against the wall. Those slots are, by
+## construction, clear of every door gap (|axis| < 1.2), every door's
+## open-panel sweep (the hinge line at +1 on the wall), the corner mirror
+## spots (|axis| > 2.67), and the straight lines from the room's center
+## to each of its doors — so the middle of every room and every
+## door-to-door path stays open. Slots that would collide with a puzzle
+## fixture (clock, press console, cage gate, keypad, parked mirrors) are
+## skipped. Each room also gets one lamp table (its light source), a
+## candle sconce, and paintings above the low pieces.
+const FLANK_OFFSET := 2.2
+## Wall slots as [wall point (local, on the wall's inner face), yaw whose
+## local +Z faces into the room].
+var _flank_slots: Array = []
+
+
+func _build_flank_slots() -> void:
+	var w := room_size / 2.0 - wall_thickness / 2.0  # inner face: 4.85
+	_flank_slots = [
+		[Vector3(-FLANK_OFFSET, 0, -w), 0.0], [Vector3(FLANK_OFFSET, 0, -w), 0.0],           # north wall
+		[Vector3(-FLANK_OFFSET, 0, w), PI], [Vector3(FLANK_OFFSET, 0, w), PI],               # south wall
+		[Vector3(-w, 0, -FLANK_OFFSET), PI / 2.0], [Vector3(-w, 0, FLANK_OFFSET), PI / 2.0], # west wall
+		[Vector3(w, 0, -FLANK_OFFSET), -PI / 2.0], [Vector3(w, 0, FLANK_OFFSET), -PI / 2.0], # east wall
 	]
+
+
+func _spawn_props() -> void:
+	_build_flank_slots()
+	# World points no furniture may crowd (radius 1.2): puzzle fixtures
+	# and the mirrors' wall parking spots.
+	var blocked: Array[Vector3] = []
+	blocked.append_array(_mirror_parking)
+	blocked.append(get_room_center(_clock_cell) + Vector3(-3.0, 0, 4.45))
+	if not _valve_cells.is_empty():
+		var press_room := get_room_center(_valve_cells[0])
+		blocked.append(press_room + Vector3(1.3, 0, -4.35))       # console
+		blocked.append(press_room + Vector3(3.55, 0, -3.55))      # cage
+		blocked.append(press_room + Vector3(3.55, 0, -2.45))      # gate
+		blocked.append(press_room + Vector3(4.6, 0, -2.2))        # gate approach
+	blocked.append(get_room_center(FOYER_CELL) + Vector3(2.4, 0, 4.6))  # keypad approach
+	blocked.append(get_room_center(VAULT_STUDY_CELL))                   # will pedestal
+
 	for z in GRID_SIZE.y:
 		for x in GRID_SIZE.x:
 			var cell := Vector2i(x, z)
-			if cell == VAULT_STUDY_CELL:
-				continue
 			var center := get_room_center(cell)
-			var side := 3.5 if _rng.randf() < 0.5 else -3.5
-			# The press room is dedicated: no wall shelf, no crates — the
-			# console (north wall) and battery cage (NE corner) own it.
-			var press_cell: bool = not _valve_cells.is_empty() and cell == _valve_cells[0]
-			if not press_cell:
-				_add_prop(center + Vector3(side, 1.1, -4.25), Vector3(1.8, 2.2, 0.45), _shelf_material)
-			if cell != _clock_cell and not press_cell:
-				for spot in crate_spots:
-					if _rng.randf() < 0.6:
-						_add_prop(center + spot, Vector3(0.8, 0.8, 0.8), _crate_material)
-			if cell in TABLE_CELLS:
-				_add_prop(center + Vector3(0, 0.45, 0), Vector3(1.6, 0.9, 1.0), _table_material)
+			# Which slots are usable here.
+			var free: Array = []
+			for slot in _flank_slots:
+				var world: Vector3 = center + slot[0]
+				var ok := true
+				for b in blocked:
+					if Vector2(world.x - b.x, world.z - b.z).length() < 1.2:
+						ok = false
+						break
+				if ok:
+					free.append(slot)
+			if free.is_empty():
+				continue
+			# Lamp table first — every room needs its light. Prefer a west
+			# wall slot so the glow reads consistently room to room.
+			var lamp_slot: Array = free[0]
+			for slot in free:
+				if slot[1] == PI / 2.0:
+					lamp_slot = slot
+					break
+			free.erase(lamp_slot)
+			_place_lamp_table(center, lamp_slot)
+			# Two to four more pieces, seeded from the palette.
+			var want := _rng.randi_range(2, 4)
+			for i in range(free.size() - 1, 0, -1):
+				var j := _rng.randi_range(0, i)
+				var tmp = free[i]
+				free[i] = free[j]
+				free[j] = tmp
+			var placed := 0
+			var kinds := ["bookcase", "sideboard", "armchair", "plant", "desk", "bookcase"]
+			for slot in free:
+				if placed >= want:
+					break
+				var kind: String = kinds[_rng.randi_range(0, kinds.size() - 1)]
+				if cell == FOYER_CELL and placed == 0:
+					kind = "coat_rack"
+				_place_wall_piece(kind, center, slot)
+				placed += 1
+			# A candle sconce 1.45 m off one wall's door axis (between the
+			# doorway and the flank piece), on the wall face.
+			var sconce_slot: Array = _flank_slots[_rng.randi_range(0, _flank_slots.size() - 1)]
+			var wall_point: Vector3 = sconce_slot[0]
+			if absf(wall_point.x) > 4.0:
+				wall_point.z = signf(wall_point.z) * 1.45
+			else:
+				wall_point.x = signf(wall_point.x) * 1.45
+			_add_sconce(center + wall_point, sconce_slot[1])
+
+
+## Oriented placement helper: `origin` is the wall point (world), `yaw`
+## turns local +Z toward the room; returns the group node to build under.
+func _wall_group(origin: Vector3, yaw: float) -> Node3D:
+	var group := Node3D.new()
+	group.position = origin
+	group.rotation.y = yaw
+	_generated_root.add_child(group)
+	return group
+
+
+func _group_box(group: Node3D, local: Vector3, size: Vector3, mat: StandardMaterial3D, solid: bool) -> void:
+	if solid:
+		var body := StaticBody3D.new()
+		body.position = local
+		var mesh := MeshInstance3D.new()
+		mesh.mesh = _get_box_mesh(size, mat)
+		body.add_child(mesh)
+		var col := CollisionShape3D.new()
+		col.shape = _get_box_shape(size)
+		body.add_child(col)
+		group.add_child(body)
+	else:
+		var mesh := MeshInstance3D.new()
+		mesh.mesh = _get_box_mesh(size, mat)
+		mesh.position = local
+		group.add_child(mesh)
+
+
+func _group_cylinder(group: Node3D, local: Vector3, radius: float, height: float, mat: StandardMaterial3D, solid: bool) -> void:
+	var mesh := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = radius
+	cyl.bottom_radius = radius
+	cyl.height = height
+	cyl.material = mat
+	mesh.mesh = cyl
+	if solid:
+		var body := StaticBody3D.new()
+		body.position = local
+		body.add_child(mesh)
+		var col := CollisionShape3D.new()
+		var shape := CylinderShape3D.new()
+		shape.radius = radius
+		shape.height = height
+		col.shape = shape
+		body.add_child(col)
+		group.add_child(body)
+	else:
+		mesh.position = local
+		group.add_child(mesh)
+
+
+func _group_sphere(group: Node3D, local: Vector3, radius: float, mat: StandardMaterial3D) -> void:
+	var mesh := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = radius
+	sphere.height = radius * 2.0
+	sphere.material = mat
+	mesh.mesh = sphere
+	mesh.position = local
+	group.add_child(mesh)
+
+
+## Side table with a flickering oil lamp — each room's light source.
+func _place_lamp_table(center: Vector3, slot: Array) -> void:
+	var group := _wall_group(center + slot[0], slot[1])
+	_group_box(group, Vector3(0, 0.375, 0.5), Vector3(0.9, 0.75, 0.9), _table_material, true)
+	_group_cylinder(group, Vector3(0, 0.79, 0.5), 0.09, 0.08, _iron_material, false)
+	_group_cylinder(group, Vector3(0, 0.95, 0.5), 0.12, 0.26, _lantern_glass_material, false)
+	var light := FlickerLight.new()
+	light.base_energy = 1.1
+	light.light_color = Color(1.0, 0.78, 0.45)
+	light.omni_range = 8.0
+	light.position = Vector3(0, 1.1, 0.5)
+	group.add_child(light)
+
+
+## Candle sconce on the wall face: bracket, candle, small warm flicker.
+func _add_sconce(at: Vector3, yaw: float) -> void:
+	var group := _wall_group(at, yaw)
+	_group_box(group, Vector3(0, 1.85, 0.05), Vector3(0.12, 0.3, 0.1), _iron_material, false)
+	_group_cylinder(group, Vector3(0, 2.05, 0.12), 0.02, 0.16, _make_material(Color(0.95, 0.92, 0.8)), false)
+	_group_sphere(group, Vector3(0, 2.15, 0.12), 0.035, _ember_glow_material)
+	var light := FlickerLight.new()
+	light.base_energy = 0.45
+	light.light_color = Color(1.0, 0.7, 0.35)
+	light.omni_range = 3.5
+	light.position = Vector3(0, 2.2, 0.25)
+	group.add_child(light)
+
+
+## One furniture piece against a wall. Local frame: X along the wall,
+## +Z into the room, wall face at z=0.
+func _place_wall_piece(kind: String, center: Vector3, slot: Array) -> void:
+	var group := _wall_group(center + slot[0], slot[1])
+	match kind:
+		"bookcase":
+			_group_box(group, Vector3(0, 1.0, 0.21), Vector3(1.1, 2.0, 0.42), _shelf_material, true)
+			# Rows of spines in muted leather colors.
+			var spine_colors := [Color(0.45, 0.16, 0.12), Color(0.2, 0.3, 0.2), Color(0.55, 0.45, 0.25), Color(0.25, 0.2, 0.4)]
+			for row in 4:
+				var y := 0.35 + 0.42 * row
+				var bx := -0.45
+				while bx < 0.42:
+					var bw := _rng.randf_range(0.05, 0.11)
+					var bh := _rng.randf_range(0.22, 0.32)
+					var col: Color = spine_colors[_rng.randi_range(0, spine_colors.size() - 1)]
+					_group_box(group, Vector3(bx + bw / 2.0, y + bh / 2.0, 0.28), Vector3(bw, bh, 0.22), _make_material(col), false)
+					bx += bw + 0.01
+				_group_box(group, Vector3(0, y - 0.02, 0.21), Vector3(1.06, 0.03, 0.4), _shelf_material, false)
+		"sideboard":
+			_group_box(group, Vector3(0, 0.425, 0.24), Vector3(1.2, 0.85, 0.48), _table_material, true)
+			_group_box(group, Vector3(0, 0.45, 0.49), Vector3(1.1, 0.5, 0.02), _shelf_material, false)
+			# A vase or a pair of candlesticks on top.
+			if _rng.randf() < 0.5:
+				_group_cylinder(group, Vector3(0.25, 0.98, 0.24), 0.08, 0.26, _make_material(Color(0.25, 0.4, 0.55)), false)
+				_group_sphere(group, Vector3(0.25, 1.15, 0.24), 0.11, _hedge_material)
+			else:
+				for cx in [-0.3, 0.3]:
+					_group_cylinder(group, Vector3(cx, 0.95, 0.24), 0.03, 0.2, _make_material(Color(0.8, 0.65, 0.3), 0.7, 0.35), false)
+					_group_cylinder(group, Vector3(cx, 1.13, 0.24), 0.02, 0.16, _make_material(Color(0.95, 0.92, 0.8)), false)
+			_place_painting(group, 1.75)
+		"armchair":
+			# Seat, back against the wall, two arms; upholstered in the rug red.
+			_group_box(group, Vector3(0, 0.22, 0.45), Vector3(0.8, 0.44, 0.8), _rug_material, true)
+			_group_box(group, Vector3(0, 0.72, 0.1), Vector3(0.8, 0.56, 0.2), _rug_material, true)
+			for ax in [-0.35, 0.35]:
+				_group_box(group, Vector3(ax, 0.55, 0.45), Vector3(0.1, 0.22, 0.8), _table_material, false)
+			_place_painting(group, 1.7)
+		"plant":
+			_group_cylinder(group, Vector3(0, 0.25, 0.4), 0.24, 0.5, _pedestal_material, true)
+			_group_sphere(group, Vector3(0, 0.85, 0.4), 0.42, _hedge_material)
+			_group_sphere(group, Vector3(0.22, 1.05, 0.5), 0.26, _pine_material)
+		"desk":
+			_group_box(group, Vector3(0, 0.39, 0.29), Vector3(1.1, 0.78, 0.58), _table_material, true)
+			_group_box(group, Vector3(-0.2, 0.795, 0.3), Vector3(0.28, 0.03, 0.2), _make_material(Color(0.9, 0.86, 0.75)), false)
+			_group_cylinder(group, Vector3(0.3, 0.9, 0.25), 0.03, 0.2, _iron_material, false)
+			# Stool tucked under the front edge (decor only).
+			_group_box(group, Vector3(0.1, 0.22, 0.6), Vector3(0.4, 0.44, 0.4), _shelf_material, false)
+			_place_painting(group, 1.7)
+		"coat_rack":
+			_group_cylinder(group, Vector3(0, 0.9, 0.35), 0.035, 1.8, _shelf_material, true)
+			_group_cylinder(group, Vector3(0, 0.03, 0.35), 0.28, 0.06, _shelf_material, false)
+			for hook_yaw in [0.0, 1.5, 3.1, 4.6]:
+				var offset := Basis(Vector3.UP, hook_yaw) * Vector3(0.12, 0, 0)
+				_group_box(group, Vector3(offset.x, 1.72, 0.35 + offset.z), Vector3(0.05, 0.05, 0.05), _iron_material, false)
+			# A hung coat and a hat.
+			_group_box(group, Vector3(0.14, 1.25, 0.35), Vector3(0.28, 0.85, 0.16), _make_material(Color(0.2, 0.18, 0.2)), false)
+			_group_cylinder(group, Vector3(-0.1, 1.86, 0.35), 0.11, 0.1, _make_material(Color(0.15, 0.13, 0.12)), false)
+
+
+## Framed painting on the wall face above a piece: gold frame, dark
+## canvas with a muted landscape band. Decor only.
+func _place_painting(group: Node3D, y: float) -> void:
+	if _rng.randf() < 0.35:
+		return
+	_group_box(group, Vector3(0, y, 0.03), Vector3(0.96, 0.72, 0.05), _make_material(Color(0.8, 0.62, 0.28), 0.6, 0.4), false)
+	var canvases := [Color(0.22, 0.28, 0.36), Color(0.35, 0.28, 0.2), Color(0.18, 0.3, 0.24)]
+	var canvas: Color = canvases[_rng.randi_range(0, canvases.size() - 1)]
+	_group_box(group, Vector3(0, y, 0.06), Vector3(0.84, 0.6, 0.02), _make_material(canvas), false)
+	_group_box(group, Vector3(0, y - 0.1, 0.07), Vector3(0.84, 0.16, 0.015), _make_material(canvas.lightened(0.25)), false)
 
 
 func _add_prop(at: Vector3, size: Vector3, material: StandardMaterial3D) -> void:
@@ -912,30 +1208,13 @@ func _build_exit_zone() -> void:
 # --- Interior atmosphere -------------------------------------------------
 
 
-## Side table carrying a flickering oil lamp — each room's light source
-## (replaces the old mid-air ceiling lamps; the rooms have no ceilings).
-func _add_table_lamp(at: Vector3) -> void:
-	_add_prop(at + Vector3(0, 0.375, 0), Vector3(0.9, 0.75, 0.9), _table_material)
-	_add_decor_cylinder(at + Vector3(0, 0.79, 0), 0.09, 0.08, _iron_material)
-	_add_decor_cylinder(at + Vector3(0, 0.95, 0), 0.12, 0.26, _lantern_glass_material)
-	var light := FlickerLight.new()
-	light.base_energy = 1.1
-	light.light_color = Color(1.0, 0.78, 0.45)
-	light.omni_range = 8.0
-	light.position = at + Vector3(0, 1.1, 0)
-	_generated_root.add_child(light)
-
-
 func _spawn_interior_atmosphere() -> void:
 	for z in GRID_SIZE.y:
 		for x in GRID_SIZE.x:
 			var cell := Vector2i(x, z)
 			var center := get_room_center(cell)
 
-			# Side table with a glowing oil lamp in the north-west corner
-			# (clear of the clock's SW spot, wall shelves, and — at lamp
-			# height — every laser line), plus drifting dust motes.
-			_add_table_lamp(center + Vector3(-3.5, 0, -3.4))
+			# Drifting dust motes (the lamp tables live in _spawn_props).
 			_add_particles(center + Vector3(0, 1.6, 0), 20, Vector3(8, 2.4, 8),
 				0.02, 0.1, Vector3.ZERO, 0.012, Color(1, 0.95, 0.8), 0.22, 6.0)
 
@@ -946,11 +1225,16 @@ func _spawn_interior_atmosphere() -> void:
 			_add_decor_box(center + Vector3(-inset, 0.075, 0), Vector3(0.06, 0.15, room_size - 0.5), _shelf_material)
 			_add_decor_box(center + Vector3(inset, 0.075, 0), Vector3(0.06, 0.15, room_size - 0.5), _shelf_material)
 
-	# Area rugs in the foyer and both parlors (deduped if they coincide).
+	# Area rugs in the foyer, both parlors, and a seeded scatter of others.
 	var rug_cells: Array[Vector2i] = [FOYER_CELL]
 	for cell: Vector2i in [_clock_cell, PARLOR_CELL]:
 		if not cell in rug_cells:
 			rug_cells.append(cell)
+	for z in GRID_SIZE.y:
+		for x in GRID_SIZE.x:
+			var cell := Vector2i(x, z)
+			if not cell in rug_cells and cell != VAULT_STUDY_CELL and _rng.randf() < 0.4:
+				rug_cells.append(cell)
 	for cell in rug_cells:
 		_add_decor_box(get_room_center(cell) + Vector3(0, 0.012, 0), Vector3(3.2, 0.02, 2.2), _rug_material)
 
@@ -1465,9 +1749,11 @@ func _add_particles(at: Vector3, amount: int, box: Vector3, vel_min: float, vel_
 	_generated_root.add_child(particles)
 
 
-static func _make_material(color: Color) -> StandardMaterial3D:
+static func _make_material(color: Color, metallic := 0.0, roughness := 1.0) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
+	mat.metallic = metallic
+	mat.roughness = roughness
 	return mat
 
 

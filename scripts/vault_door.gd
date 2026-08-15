@@ -61,6 +61,7 @@ func _try_open() -> void:
 	Door._dust_puff(global_position + Vector3(-0.8, 0, 0), 14)
 	Door._dust_puff(global_position + Vector3(0.8, 0, 0), 14)
 	AudioSynthesizer.play_at("chime", global_position, -8.0, 0.6)
+	AudioSynthesizer.play_at("rumble", global_position, -4.0)
 	opened.emit()
 
 

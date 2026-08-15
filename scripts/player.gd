@@ -308,6 +308,11 @@ func _physics_process(delta: float) -> void:
 		if global_position.distance_to(_adjusting_mirror.global_position) > 3.5:
 			_finish_mirror_adjust()
 		input_dir = Vector2.ZERO
+		# Keep facing the frame while it swivels under our hands.
+		if is_instance_valid(_adjusting_mirror):
+			var to_mirror := _adjusting_mirror.global_position - global_position
+			if to_mirror.length() > 0.05:
+				rotation.y = lerp_angle(rotation.y, atan2(-to_mirror.x, -to_mirror.z), 1.0 - exp(-10.0 * delta))
 	# Hauling: the mirror seated itself (or vanished) -> hands off.
 	var speed_cap := max_speed
 	if _pushing_mirror:
@@ -450,7 +455,7 @@ func _play_footstep(foot: int, speed: float) -> void:
 	var surface := _surface_at(global_position)
 	var variant := randi_range(0, 2)
 	var stride := clampf(speed / max_speed, 0.0, 1.0)
-	var volume := -20.0 + 7.0 * stride
+	var volume := -26.0 + 7.0 * stride
 	var pitch := 0.97 if foot == 0 else 1.03
 	# Indoors the steps ring down the halls; outside they play dry.
 	var outdoors := surface != "wood"
@@ -493,6 +498,12 @@ func _animate_visual(delta: float) -> void:
 
 	if _anim_player and not _walk_anim.is_empty():
 		_visual.rotation.x = lerpf(_visual.rotation.x, lean, lean_weight)
+		# Hands on a mirror: pivoting, or hauling while standing still,
+		# holds the reach pose. Any walking releases it into the gait.
+		if _adjusting_mirror != null or (pushing and speed <= 0.1):
+			_set_hold_pose(true)
+			return
+		_set_hold_pose(false)
 		# One-shot action (pick up, open door) plays out unless the player
 		# starts moving, which cancels straight back into the walk.
 		if not _action_anim.is_empty():
@@ -642,8 +653,12 @@ func _update_prompt() -> void:
 	var anchor: Node3D = null
 	var height := 1.6
 	var target := get_nearest_interactable()
-	if _pushing_mirror and is_instance_valid(_pushing_mirror):
-		text = "[E] Release Mirror"
+	if _adjusting_mirror and is_instance_valid(_adjusting_mirror):
+		text = "PIVOT — [Mouse] Swivel   [E] Let Go"
+		anchor = _adjusting_mirror
+		height = _adjusting_mirror.prompt_height
+	elif _pushing_mirror and is_instance_valid(_pushing_mirror):
+		text = "HAULING — [WASD] Move  [Mouse] Swivel  [E] Let Go"
 		anchor = _pushing_mirror
 		height = _pushing_mirror.prompt_height
 	elif target is Interactable:
@@ -711,6 +726,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_rotate_tween.kill()
 		_rotate_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		_rotate_tween.tween_method(_set_camera_yaw, _yaw_current, _yaw_target, 0.35)
+		AudioSynthesizer.play_ui("whoosh", -16.0)
 		get_viewport().set_input_as_handled()
 		return
 
@@ -731,12 +747,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		if target is RotatingMirror:
 			var mirror := target as RotatingMirror
 			if mirror.pushable and not mirror.seated:
-				# Unseated pushable: take hold and haul it to its ring.
+				# Unseated pushable: take hold and haul it to its ring (no
+				# grip step: the mirror rides the grip offset every frame,
+				# so moving the player would drag it along).
 				start_pushing(mirror)
 			else:
-				# Enter mirror rotation mode.
+				# Enter mirror rotation mode: step behind the frame, take
+				# hold, and the mirror follows the mouse.
 				_adjusting_mirror = mirror
 				_adjusting_mirror.start_rotating()
+				_step_to_grip(mirror, 0.85)
 		elif target:
 			request_interact(target)
 	elif event.is_action_pressed("drop"):
@@ -779,12 +799,20 @@ func start_pushing(mirror: RotatingMirror) -> bool:
 		offset = -global_transform.basis.z
 	_push_offset = offset.normalized() * clampf(offset.length(), 0.95, 1.5)
 	_push_sync_accum = 0.0
+	# Floorboard drag: silent until the mirror actually moves.
+	_drag_loop = AudioSynthesizer.create_loop("drag_wood", mirror, -60.0)
 	return true
+
+
+var _drag_loop: AudioStreamPlayer3D
 
 
 func _finish_push() -> void:
 	if _pushing_mirror == null:
 		return
+	if is_instance_valid(_drag_loop):
+		_drag_loop.queue_free()
+	_drag_loop = null
 	if is_instance_valid(_pushing_mirror):
 		var mirror := _pushing_mirror
 		mirror.end_push()
@@ -807,10 +835,18 @@ func _update_pushed_mirror(delta: float) -> void:
 	var target := global_position + _push_offset
 	var mirror := _pushing_mirror
 	mirror.set_hauled_position(target)
+	# The drag scrape swells with speed and dies when the mirror rests.
+	if is_instance_valid(_drag_loop):
+		var speed := Vector2(velocity.x, velocity.z).length()
+		var goal := -60.0 if speed < 0.2 else lerpf(-26.0, -12.0, clampf(speed / (max_speed * push_speed_factor), 0.0, 1.0))
+		_drag_loop.volume_db = lerpf(_drag_loop.volume_db, goal, 1.0 - exp(-12.0 * delta))
 	if mirror.seated:
 		# set_hauled_position snapped it home; the mirror already released us.
 		if NetworkSession.multiplayer_active:
 			mirror._net_seat.rpc()
+		if is_instance_valid(_drag_loop):
+			_drag_loop.queue_free()
+		_drag_loop = null
 		_pushing_mirror = null
 		return
 	if NetworkSession.multiplayer_active:
@@ -846,9 +882,53 @@ func _set_camera_yaw(yaw: float) -> void:
 	camera_pivot.rotation.y = yaw
 
 
+## Slide the character to a grip spot `dist` behind the mirror (on the
+## side the player approached from) facing it, so the model visibly
+## takes hold of the frame's back. Physics still resolves overlaps.
+func _step_to_grip(mirror: RotatingMirror, dist: float) -> void:
+	var away := global_position - mirror.global_position
+	away.y = 0.0
+	if away.length() < 0.05:
+		away = -global_transform.basis.z
+	away = away.normalized()
+	var grip := mirror.global_position + away * dist
+	grip.y = global_position.y
+	if _grip_tween and _grip_tween.is_running():
+		_grip_tween.kill()
+	_grip_tween = create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_grip_tween.tween_property(self, "global_position", grip, 0.22)
+	# Face the mirror (-Z is the body's forward).
+	rotation.y = atan2(away.x, away.z)
+	velocity = Vector3.ZERO
+
+
+var _grip_tween: Tween
+var _holding_pose := false
+## Frozen frame of the door-reach clip that reads as two hands on a frame.
+const HOLD_POSE_TIME := 0.55
+
+
+## Hold the "hands on the frame" pose (or release it back to locomotion).
+func _set_hold_pose(on: bool) -> void:
+	if _anim_player == null:
+		return
+	if on and not _holding_pose:
+		_holding_pose = true
+		if _anim_player.has_animation("moves/open_door"):
+			_anim_player.play("moves/open_door", 0.15)
+			_anim_player.seek(HOLD_POSE_TIME, true)
+			_anim_player.pause()
+	elif not on and _holding_pose:
+		_holding_pose = false
+		if not _idle_anim.is_empty():
+			_anim_player.play(_idle_anim, 0.2)
+		_anim_player.speed_scale = 1.0
+
+
 func _finish_mirror_adjust() -> void:
 	if _adjusting_mirror == null:
 		return
+	_set_hold_pose(false)
 	_adjusting_mirror.end_adjust()
 	if NetworkSession.multiplayer_active:
 		_adjusting_mirror._net_finish_angle.rpc(_adjusting_mirror.rotation.y)

@@ -179,6 +179,11 @@ func _seat() -> void:
 
 
 func _process(delta: float) -> void:
+	if _pivot_ring != null and _pivot_ring.visible:
+		# Pivot ring pulses gently while held.
+		_pivot_time += delta
+		_pivot_ring.scale = Vector3.ONE * (1.0 + 0.04 * sin(_pivot_time * 6.0))
+		_pivot_ring.scale.y = 0.3
 	if _marker == null or seated:
 		return
 	# The ring breathes until its mirror arrives.
@@ -188,11 +193,53 @@ func _process(delta: float) -> void:
 
 # --- Swivel --------------------------------------------------------------
 
+var _pivot_ring: MeshInstance3D
+var _pivot_time := 0.0
+
 
 ## Start rotation mode: called by player when E is pressed on this mirror.
+## Lights the pivot ring so it is unmistakable that the mirror, not the
+## player, now follows the mouse.
 func start_rotating() -> void:
 	if _tween and _tween.is_running():
 		_tween.kill()
+	set_pivot_highlight(true)
+	AudioSynthesizer.play_at("tick", global_position, -12.0, 1.3)
+
+
+## Cyan ring at the base with a rotating tick: visible only while a
+## player holds this mirror in pivot mode.
+func set_pivot_highlight(on: bool) -> void:
+	if on and _pivot_ring == null:
+		_pivot_ring = MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = 0.42
+		torus.outer_radius = 0.52
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = Color(0.35, 1.0, 1.0)
+		mat.emission_enabled = true
+		mat.emission = Color(0.35, 1.0, 1.0)
+		mat.emission_energy_multiplier = 1.8
+		torus.material = mat
+		_pivot_ring.mesh = torus
+		_pivot_ring.scale = Vector3(1, 0.3, 1)
+		_pivot_ring.position = Vector3(0, 0.06, 0)
+		add_child(_pivot_ring)
+		# A tick on the ring shows the swivel direction at a glance.
+		var tick := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(0.06, 0.12, 0.2)
+		box.material = mat
+		tick.mesh = box
+		tick.position = Vector3(0, 0.1, 0.5)
+		add_child(tick)
+		tick.name = "PivotTick"
+	if _pivot_ring != null:
+		_pivot_ring.visible = on
+		var tick := get_node_or_null("PivotTick")
+		if tick:
+			tick.visible = on
 
 
 ## Adjust mirror angle by mouse delta in pixels (typically delta.x from motion event).
@@ -224,6 +271,7 @@ func _net_finish_angle(angle: float) -> void:
 
 ## Settle onto the nearest detent when the hold is released.
 func end_adjust() -> void:
+	set_pivot_highlight(false)
 	var detent := roundf(rad_to_deg(rotation.y) / snap_degrees) * snap_degrees
 	if _tween and _tween.is_running():
 		_tween.kill()

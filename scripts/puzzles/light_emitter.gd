@@ -21,7 +21,11 @@ func _ready() -> void:
 
 
 func power_on() -> void:
+	if powered:
+		return
 	powered = true
+	# A live laser hums; you hear the machine before you see the beam.
+	AudioSynthesizer.create_loop("laser_hum", self, -22.0)
 
 
 func _physics_process(_delta: float) -> void:

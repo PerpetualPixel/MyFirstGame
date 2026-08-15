@@ -108,6 +108,7 @@ func activate() -> void:
 	Door._dust_puff(global_position + Vector3(0.7, 0, 0), 10)
 	AudioSynthesizer.play_at("steam", global_position, -8.0, 1.3)
 	AudioSynthesizer.play_at("chime", global_position, -12.0, 0.7)
+	AudioSynthesizer.play_at("rumble", global_position, -6.0, 1.2)
 	opened.emit()
 
 

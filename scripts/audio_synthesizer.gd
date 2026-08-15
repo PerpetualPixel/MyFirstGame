@@ -34,6 +34,11 @@ func _ready() -> void:
 	_streams["fire_crackle"] = _gen_fire_crackle()
 	_streams["zap"] = _gen_zap()
 	_streams["power_up"] = _gen_power_up()
+	_streams["door_creak"] = _gen_door_creak()
+	_streams["drag_wood"] = _gen_drag_wood()
+	_streams["laser_hum"] = _gen_laser_hum()
+	_streams["rumble"] = _gen_rumble()
+	_streams["whoosh"] = _gen_whoosh()
 
 
 func _exit_tree() -> void:
@@ -271,6 +276,99 @@ static func _gen_wind() -> AudioStreamWAV:
 		var patter := (randf() * 2.0 - 1.0) * drop * 0.25
 		s[i] = lp * swell * 0.9 + patter
 	return _make_wav(s, true)
+
+
+# --- Doors, hauling, machines, camera -----------------------------------
+
+
+## Old hinge: a slow rising groan with a wobble, then a settle.
+static func _gen_door_creak() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 0.75)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var phase := 0.0
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var freq := 190.0 + 170.0 * minf(t / 0.5, 1.0) + 18.0 * sin(TAU * 11.0 * t)
+		phase += TAU * freq / SAMPLE_RATE
+		# Stick-slip: the tone stutters like a dry hinge.
+		var stick := 0.55 + 0.45 * signf(sin(TAU * 34.0 * t + 2.0 * sin(TAU * 3.0 * t)))
+		var env := minf(t / 0.06, 1.0) * exp(-maxf(t - 0.5, 0.0) * 9.0)
+		var body := (sin(phase) * 0.5 + sin(phase * 2.0) * 0.18 + sin(phase * 3.0) * 0.08) * stick
+		s[i] = (body * env + (randf() * 2.0 - 1.0) * 0.03 * env) * 0.7
+	return _make_wav(s)
+
+
+## Heavy furniture dragged over floorboards: looping, gritty rumble with
+## slow surges (loop-aligned).
+static func _gen_drag_wood() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 1.2)
+	var raw := PackedFloat32Array()
+	raw.resize(n)
+	var lp := 0.0
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		lp += 0.12 * ((randf() * 2.0 - 1.0) - lp)
+		var surge := 0.6 + 0.4 * sin(TAU * t / 1.2 * 2.0)
+		var grit := (randf() * 2.0 - 1.0) * 0.06 if randf() < 0.2 else 0.0
+		raw[i] = (lp * 0.9 + grit) * surge
+	var body := _resonate(raw, 160.0, 0.96)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	for i in n:
+		s[i] = raw[i] * 0.6 + body[i] * 0.5
+	return _make_wav(_normalize(s, 0.6), true)
+
+
+## Powered laser: a steady electric hum with a faint high whine.
+static func _gen_laser_hum() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 1.0)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var v := sin(TAU * 120.0 * t) * 0.35 + sin(TAU * 240.0 * t) * 0.15 + sin(TAU * 60.0 * t) * 0.2
+		v += signf(sin(TAU * 120.0 * t)) * 0.04  # a little buzz
+		v += sin(TAU * 2400.0 * t) * 0.03 * (0.5 + 0.5 * sin(TAU * 4.0 * t))
+		s[i] = v * 0.6
+	return _make_wav(s, true)
+
+
+## Deep stone rumble for gates and heavy mechanisms settling.
+static func _gen_rumble() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 1.4)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var lp := 0.0
+	var lp2 := 0.0
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		lp += 0.02 * ((randf() * 2.0 - 1.0) - lp)
+		lp2 += 0.05 * (lp - lp2)
+		var env := minf(t / 0.08, 1.0) * exp(-t * 2.6)
+		var thump := sin(TAU * 42.0 * t) * exp(-t * 3.0) * 0.4
+		s[i] = (lp2 * 6.0 + thump) * env
+	return _make_wav(_normalize(s, 0.85))
+
+
+## Camera swing: a short airy whoosh (band-swept noise).
+static func _gen_whoosh() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 0.35)
+	var raw := PackedFloat32Array()
+	raw.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var env := sin(PI * minf(t / 0.35, 1.0))  # swell and fade
+		raw[i] = (randf() * 2.0 - 1.0) * env * 0.05
+	var lo := _resonate(raw, 700.0, 0.93)
+	var hi := _resonate(raw, 1600.0, 0.9)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var mix := t / 0.35  # sweeps upward through the swing
+		s[i] = lo[i] * (1.0 - mix) + hi[i] * mix
+	return _make_wav(_normalize(s, 0.45))
 
 
 # --- Footsteps -----------------------------------------------------------
