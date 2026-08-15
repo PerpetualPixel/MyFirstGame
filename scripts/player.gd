@@ -423,11 +423,15 @@ func _compute_blocking_walls() -> Dictionary:
 	var cam_right := _camera.global_transform.basis.x
 
 	# Three rays (center + both shoulders) catch walls a single ray misses.
+	# Cast from the PLAYER toward the camera: the walls hiding the
+	# character are the ones nearest the player, so they are found first
+	# and can never be starved out of the hit budget by props and clutter
+	# closer to the camera.
 	for side_offset: Vector3 in [Vector3.ZERO, cam_right * 0.9, cam_right * -0.9]:
-		var to := global_position + Vector3.UP + side_offset
+		var from := global_position + Vector3.UP + side_offset
 		var exclude: Array[RID] = [get_rid()]
-		for i in 4:
-			var query := PhysicsRayQueryParameters3D.create(cam_pos + side_offset, to)
+		for i in 8:
+			var query := PhysicsRayQueryParameters3D.create(from, cam_pos + side_offset)
 			query.exclude = exclude
 			var hit := space.intersect_ray(query)
 			if hit.is_empty():

@@ -22,6 +22,7 @@ const LIGHT_EMITTER_SCENE := preload("res://scenes/Puzzles/LightEmitter.tscn")
 const ROTATING_MIRROR_SCENE := preload("res://scenes/Puzzles/RotatingMirror.tscn")
 const LIGHT_RECEIVER_SCENE := preload("res://scenes/Puzzles/LightReceiver.tscn")
 const SMALL_WRENCH_SCENE := preload("res://scenes/SmallWrench.tscn")
+const PRESSURE_MACHINE_SCRIPT := preload("res://scripts/puzzles/pressure_puzzle_manager.gd")
 const BREAKER_BOX_SCENE := preload("res://scenes/Puzzles/BreakerBox.tscn")
 const VAULT_DOOR_SCENE := preload("res://scenes/VaultDoor.tscn")
 const WILL_ITEM_SCENE := preload("res://scenes/WillItem.tscn")
@@ -79,9 +80,9 @@ const ROUTE_VARIANTS := [
 		"doors": [[Vector2i(1, 2), Vector2i(1, 1)]],
 	},
 ]
-## Adjacent room pairs eligible to host the hydraulic press and, next
-## door, the Heavy Battery's pressure-locked cage (the pair's connecting
-## door is forced open so the reward is visible from the machine room).
+## Adjacent room pairs: the pair's FIRST room becomes the hydraulic
+## press's dedicated machinery room (console + battery cage); the forced
+## pair door keeps the approach corridor honest across layouts.
 const VALVE_PAIR_OPTIONS := [
 	[Vector2i(2, 1), Vector2i(2, 2)], [Vector2i(0, 1), Vector2i(0, 2)],
 	[Vector2i(2, 0), Vector2i(2, 1)], [Vector2i(0, 0), Vector2i(0, 1)],
@@ -503,26 +504,30 @@ func _spawn_puzzle() -> void:
 	_generated_root.add_child(door)
 	receiver.puzzle_completed.connect(door.on_light_puzzle_completed)
 
-	# Hydraulic press (three-phase pressure puzzle) in the first machinery
-	# room. Counts, PSI values, and the target are seeded so every co-op
-	# peer builds an identical machine with identical node paths.
-	var machine := PressurePuzzleManager.new()
+	# Hydraulic press console in its own dedicated machinery room; [E]
+	# opens the fullscreen control-panel minigame. Counts, PSI values, and
+	# the target are seeded so every co-op peer builds an identical machine
+	# with identical node paths. Untyped so script-added properties resolve
+	# dynamically post-set_script (garage-button pattern).
+	var machine = StaticBody3D.new()
 	machine.name = "PressureMachine"
+	machine.set_script(PRESSURE_MACHINE_SCRIPT)
 	machine.small_point_count = _rng.randi_range(1, 3)
 	machine.big_point_count = _rng.randi_range(1, 2)
 	var pressures := _roll_valve_pressures()
 	machine.valve_pressures = pressures
 	machine.target_psi = _roll_target_psi(pressures)
-	machine.position = get_room_center(_valve_cells[0]) + Vector3(2.2, 0, 2.4)
-	machine.rotation.y = deg_to_rad(225.0)  # front faces the room center
+	var press_room := get_room_center(_valve_cells[0])
+	# Against the north wall, west of its door gap, facing into the room.
+	machine.position = press_room + Vector3(-2.2, 0, -4.35)
 	_generated_root.add_child(machine)
 	# The vault gate's right-hand lamp now tracks the hydraulics.
 	machine.puzzle_solved.connect(door.on_hydraulics_ready)
 
-	# Battery cage flush in the partner room's NE corner: three
-	# camera-fading walls, sealed by the hydraulic gate until the press
-	# balances. The Heavy Battery sits inside.
-	var cage := get_room_center(_valve_cells[1]) + Vector3(3.55, 0, -3.55)
+	# Battery cage flush in the SAME room's NE corner: three camera-fading
+	# walls, sealed by the hydraulic gate until the press balances. The
+	# Heavy Battery sits inside, visible as the reward from the console.
+	var cage := press_room + Vector3(3.55, 0, -3.55)
 	_add_fade_wall(cage + Vector3(0, 1.15, -1.19), Vector3(2.56, 2.3, 0.18))
 	_add_fade_wall(cage + Vector3(-1.19, 1.15, 0), Vector3(0.18, 2.3, 2.2))
 	_add_fade_wall(cage + Vector3(1.19, 1.15, 0), Vector3(0.18, 2.3, 2.2))
@@ -714,11 +719,12 @@ func _spawn_props() -> void:
 				continue
 			var center := get_room_center(cell)
 			var side := 3.5 if _rng.randf() < 0.5 else -3.5
-			if _valve_cells.size() > 1 and cell == _valve_cells[1]:
-				side = -3.5  # keep the battery cage's NE corner clear
-			_add_prop(center + Vector3(side, 1.1, -4.25), Vector3(1.8, 2.2, 0.45), _shelf_material)
-			# Keep the clock's, the press's, and the cage's corners clear.
-			if cell != _clock_cell and not cell in _valve_cells:
+			# The press room is dedicated: no wall shelf, no crates — the
+			# console (north wall) and battery cage (NE corner) own it.
+			var press_cell: bool = not _valve_cells.is_empty() and cell == _valve_cells[0]
+			if not press_cell:
+				_add_prop(center + Vector3(side, 1.1, -4.25), Vector3(1.8, 2.2, 0.45), _shelf_material)
+			if cell != _clock_cell and not press_cell:
 				for spot in crate_spots:
 					if _rng.randf() < 0.6:
 						_add_prop(center + spot, Vector3(0.8, 0.8, 0.8), _crate_material)

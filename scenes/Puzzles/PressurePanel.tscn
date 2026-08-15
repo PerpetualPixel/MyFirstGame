@@ -1,0 +1,47 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/puzzles/pressure_panel.gd" id="1_ppanel"]
+
+[node name="PressurePanel" type="CanvasLayer"]
+process_mode = 3
+layer = 10
+visible = false
+script = ExtResource("1_ppanel")
+
+[node name="Overlay" type="Control" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Dim" type="ColorRect" parent="Overlay"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.78)
+
+[node name="Board" type="Control" parent="Overlay"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -450.0
+offset_top = -280.0
+offset_right = 450.0
+offset_bottom = 280.0
+
+[node name="CloseButton" type="Button" parent="Overlay/Board"]
+offset_left = 834.0
+offset_top = 10.0
+offset_right = 890.0
+offset_bottom = 44.0
+text = "✕"
+
+[node name="Hint" type="Label" parent="Overlay"]
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -42.0
+offset_bottom = -10.0
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 16
+text = "Hydraulic press"
+horizontal_alignment = 1

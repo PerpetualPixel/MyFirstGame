@@ -49,10 +49,10 @@ func _run() -> void:
 		return
 	var machine: PressurePuzzleManager = machines[0]
 	var pressure_gate: HydraulicDoor = gates[0]
-	if machine.valves.size() != 5 or machine.small_points.size() < 1 or machine.small_points.size() > 3 \
-			or machine.big_points.size() < 1 or machine.big_points.size() > 2:
+	if machine.valve_on.size() != 5 or machine.small_tight.size() < 1 or machine.small_tight.size() > 3 \
+			or machine.big_tight.size() < 1 or machine.big_tight.size() > 2:
 		print("TEST FAIL: press built %d valves, %d small, %d big fittings" % [
-			machine.valves.size(), machine.small_points.size(), machine.big_points.size()])
+			machine.valve_on.size(), machine.small_tight.size(), machine.big_tight.size()])
 		quit(1)
 		return
 	var vault_door: VaultDoor = vault_doors[0]
@@ -294,18 +294,32 @@ func _run() -> void:
 	pause_menu.resume()
 	await process_frame
 
-	# --- Hydraulic press: phase gating, wrench checks, PSI toggle math ---
+	# --- Hydraulic press: modal panel, phase gating, wrench checks, PSI ---
+	# [E] opens the fullscreen control panel (solo pauses); ESC steps away.
+	machine.interact(player)
+	await process_frame
+	if not machine.minigame.is_open or not paused:
+		print("TEST FAIL: press panel did not open/pause")
+		quit(1)
+		return
+	_press_escape()
+	await process_frame
+	await process_frame
+	if machine.minigame.is_open or paused:
+		print("TEST FAIL: ESC did not close the press panel")
+		quit(1)
+		return
 	var wrong_uses := [0]
-	machine.wrong_item_used.connect(func(_p: TighteningPoint, _by: Node3D) -> void: wrong_uses[0] += 1)
+	machine.wrong_item_used.connect(func(_by: Node3D) -> void: wrong_uses[0] += 1)
 	# Valves are sealed until every fitting is torqued.
-	machine.valves[0].interact(player)
-	if machine.valves[0].is_on:
+	machine.request_toggle_valve(player, 0)
+	if machine.valve_on[0]:
 		print("TEST FAIL: valve toggled before the fittings were tightened")
 		quit(1)
 		return
 	# Small fittings refuse bare hands.
-	machine.small_points[0].interact(player)
-	if machine.small_points[0].is_tight:
+	machine.request_tighten(player, false, 0)
+	if machine.small_tight[0]:
 		print("TEST FAIL: fitting tightened without a wrench")
 		quit(1)
 		return
@@ -320,22 +334,20 @@ func _run() -> void:
 		quit(1)
 		return
 	# Big fittings are still phase-locked while small ones remain loose.
-	machine.big_points[0].interact(player)
-	if machine.big_points[0].is_tight:
+	machine.request_tighten(player, true, 0)
+	if machine.big_tight[0]:
 		print("TEST FAIL: big fitting accepted work before its phase")
 		quit(1)
 		return
-	for point in machine.small_points:
-		point.interact(player)
-	for i in 60:
-		await physics_frame
+	for i in machine.small_tight.size():
+		machine.request_tighten(player, false, i)
 	if machine.phase != PressurePuzzleManager.Phase.BIG_FITTINGS:
 		print("TEST FAIL: press did not advance after the small fittings")
 		quit(1)
 		return
 	# Big fitting with only the small wrench -> wrong-item event, no turn.
-	machine.big_points[0].interact(player)
-	if machine.big_points[0].is_tight or wrong_uses[0] == 0:
+	machine.request_tighten(player, true, 0)
+	if machine.big_tight[0] or wrong_uses[0] == 0:
 		print("TEST FAIL: big fitting accepted the small wrench (wrong_uses=%d)" % wrong_uses[0])
 		quit(1)
 		return
@@ -348,10 +360,8 @@ func _run() -> void:
 		print("TEST FAIL: could not pack the released Brass Wrench")
 		quit(1)
 		return
-	for point in machine.big_points:
-		point.interact(player)
-	for i in 60:
-		await physics_frame
+	for i in machine.big_tight.size():
+		machine.request_tighten(player, true, i)
 	if machine.phase != PressurePuzzleManager.Phase.VALVES:
 		print("TEST FAIL: press did not open the valve phase")
 		quit(1)
@@ -359,17 +369,17 @@ func _run() -> void:
 	# Toggle math: opening adds the signed PSI, closing removes it. Probe
 	# with a valve that is NOT a one-valve solution, else the press solves
 	# and locks mid-check.
-	var probe: PressureValve = null
-	for v in machine.valves:
-		if machine.base_psi + v.pressure_value != machine.target_psi:
-			probe = v
+	var probe := -1
+	for i in 5:
+		if machine.base_psi + machine.valve_pressures[i] != machine.target_psi:
+			probe = i
 			break
-	probe.interact(player)
-	if machine.current_psi != machine.base_psi + probe.pressure_value:
+	machine.request_toggle_valve(player, probe)
+	if machine.current_psi != machine.base_psi + machine.valve_pressures[probe]:
 		print("TEST FAIL: PSI after opening the probe valve: %d" % machine.current_psi)
 		quit(1)
 		return
-	probe.interact(player)
+	machine.request_toggle_valve(player, probe)
 	if machine.current_psi != machine.base_psi:
 		print("TEST FAIL: PSI did not return to base after closing")
 		quit(1)
@@ -381,7 +391,7 @@ func _run() -> void:
 		var total := machine.base_psi
 		for i in 5:
 			if mask & (1 << i):
-				total += machine.valves[i].pressure_value
+				total += machine.valve_pressures[i]
 		if total == machine.target_psi:
 			solution_mask = mask
 			break
@@ -391,8 +401,8 @@ func _run() -> void:
 		return
 	for i in 5:
 		var want := (solution_mask & (1 << i)) != 0
-		if machine.valves[i].is_on != want:
-			machine.valves[i].interact(player)
+		if machine.valve_on[i] != want:
+			machine.request_toggle_valve(player, i)
 	if not machine.solved:
 		print("TEST FAIL: press not solved at target PSI (%d/%d)" % [machine.current_psi, machine.target_psi])
 		quit(1)
@@ -409,12 +419,12 @@ func _run() -> void:
 		return
 	# The locked machine must ignore further pokes.
 	var psi_locked: int = machine.current_psi
-	machine.valves[0].interact(player)
+	machine.request_toggle_valve(player, 0)
 	if machine.current_psi != psi_locked:
 		print("TEST FAIL: solved press still accepts valve toggles")
 		quit(1)
 		return
-	print("hydraulic press three-phase puzzle OK")
+	print("hydraulic press panel three-phase puzzle OK")
 
 	# --- Laser maze: dead until the Heavy Battery is cradled ---
 	for door in hinged:
