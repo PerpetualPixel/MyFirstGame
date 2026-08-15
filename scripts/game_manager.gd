@@ -321,13 +321,13 @@ func _refresh_objectives() -> void:
 	var valves_ok := _valves.size() > 0 and _valves_done >= _valves.size()
 	var will_ok := state == State.WON
 
-	_obj_breaker.text = "%s Restore Power (install 2 fuses)" % _checkbox(_breaker_done)
+	_obj_breaker.text = "%s Restore Power" % _checkbox(_breaker_done)
 	_obj_breaker.modulate = done_color if _breaker_done else Color.WHITE
-	_obj_clock.text = "%s Restore the Grandfather Clock (%d/3 gears)" % [_checkbox(_clock_done), _gears_placed]
+	_obj_clock.text = "%s Restore the Grandfather Clock" % _checkbox(_clock_done)
 	_obj_clock.modulate = done_color if _clock_done else Color.WHITE
 	_obj_wrench.text = "%s Find the Brass Wrench" % _checkbox(_wrench_found)
 	_obj_wrench.modulate = done_color if _wrench_found else Color.WHITE
-	_obj_steam.text = "%s Synchronize Steam Pressure (%d/%d - 25s window)" % [_checkbox(valves_ok), _valves_done, _valves.size()]
+	_obj_steam.text = "%s Synchronize Steam Pressure" % _checkbox(valves_ok)
 	_obj_steam.modulate = done_color if valves_ok else Color.WHITE
 	_obj_light.text = "%s Align Laser Circuit" % _checkbox(_light_done)
 	_obj_light.modulate = done_color if _light_done else Color.WHITE
