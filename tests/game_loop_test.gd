@@ -272,7 +272,37 @@ func _run() -> void:
 			print("TEST FAIL: player still holding a seated mirror")
 			quit(1)
 			return
-	print("hauled mirrors push + snap OK")
+	# The decoy is FREE: haul it anywhere, swivel it while holding, it
+	# never seats and shows no ring.
+	var decoy := _mirror_named(mirrors, "Mirror_Decoy")
+	if decoy == null or not decoy.pushable or decoy.has_target or decoy.seated:
+		print("TEST FAIL: decoy is not a free (ringless, unseated) pushable")
+		quit(1)
+		return
+	player.teleport(decoy.global_position + Vector3(0, 0, 1.1))
+	for k in 5:
+		await physics_frame
+	if not player.start_pushing(decoy):
+		print("TEST FAIL: could not take hold of the decoy")
+		quit(1)
+		return
+	var decoy_from := decoy.global_position
+	var decoy_yaw := decoy.rotation.y
+	decoy.adjust_by_mouse(-600.0)  # swivel while held
+	player.teleport(player.global_position + Vector3(2.0, 0, 0))
+	for k in 5:
+		await physics_frame
+	if decoy.global_position.distance_to(decoy_from) < 1.5 or absf(decoy.rotation.y - decoy_yaw) < 0.5:
+		print("TEST FAIL: free decoy did not haul/swivel (moved %.2f, turned %.2f)" % [
+			decoy.global_position.distance_to(decoy_from), absf(decoy.rotation.y - decoy_yaw)])
+		quit(1)
+		return
+	player._finish_push()
+	if decoy.seated or player._pushing_mirror != null:
+		print("TEST FAIL: free decoy seated or stayed held after release")
+		quit(1)
+		return
+	print("hauled mirrors push + snap OK; free decoy OK")
 
 	# --- Free-angle swivel: adjust moves smoothly, release snaps to 15° ---
 	var swivel := _mirror_near(mirrors, route["mirrors"][0])

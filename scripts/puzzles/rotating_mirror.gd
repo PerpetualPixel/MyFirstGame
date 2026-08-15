@@ -8,9 +8,12 @@ extends Interactable
 ##    floating text — players discover the swivel.
 ##  - PUSHABLE: spawns somewhere along its room's walls with a glowing
 ##    floor ring marking where it belongs. [E] grabs it: WASD then hauls
-##    the mirror around at a fixed grip offset (push or drag), the player
-##    owns that translation. Once it comes within `snap_radius` of the
-##    ring it seats itself with a clunk and becomes a normal fixed mirror.
+##    the mirror around at a fixed grip offset (push or drag) while the
+##    mouse swivels it; the player owns both. Once it comes within
+##    `snap_radius` of the ring it seats itself with a clunk and becomes
+##    a normal fixed mirror.
+##  - FREE (the decoy): pushable with no ring — haul it anywhere, swivel
+##    it while holding, let go wherever. It never seats. Useless as ever.
 ## Beams reflect off the live collision normal, so any angle works.
 
 signal seated_changed
@@ -22,8 +25,10 @@ signal seated_changed
 ## How close (m) the mirror must be hauled to its ring before it seats.
 @export var snap_radius: float = 0.6
 
-## Set by the generator via make_pushable(); false = fixed on its spot.
+## Set by the generator via make_pushable()/make_free(); false = fixed.
 var pushable := false
+## False for a FREE mirror: nowhere to seat, no ring.
+var has_target := false
 ## Where a pushable mirror belongs (world space, floor level).
 var target_position := Vector3.ZERO
 ## True once a pushable mirror has been hauled onto its ring (fixed
@@ -36,6 +41,7 @@ var pusher: Node3D = null
 
 var _powered_frame: int = -100
 var _tween: Tween
+var _seat_tween: Tween
 var _ratchet_accum := 0.0
 var _marker: MeshInstance3D
 var _marker_mat: StandardMaterial3D
@@ -44,7 +50,7 @@ var _marker_time := 0.0
 
 func _ready() -> void:
 	_beam.add_exception(self)
-	if pushable and not seated:
+	if pushable and has_target and not seated:
 		_build_marker()
 
 
@@ -52,8 +58,17 @@ func _ready() -> void:
 ## (co-op peers build identical layouts, so no netcode is needed here).
 func make_pushable(target: Vector3) -> void:
 	pushable = true
+	has_target = true
 	seated = false
 	target_position = target
+
+
+## Turn this mirror into a free-roaming one: haulable anywhere, no ring,
+## never seats. Call before add_child.
+func make_free() -> void:
+	pushable = true
+	has_target = false
+	seated = false
 
 
 ## Glowing brass ring on the floor where the mirror belongs. top_level so
@@ -124,8 +139,9 @@ func _net_release() -> void:
 ## (grip offset + wall clearance) and streams it; every peer applies it
 ## through here so the snap check runs identically everywhere.
 func set_hauled_position(pos: Vector3) -> void:
-	global_position = Vector3(pos.x, target_position.y if pushable else global_position.y, pos.z)
-	if pushable and not seated and Vector2(pos.x - target_position.x, pos.z - target_position.z).length() <= snap_radius:
+	global_position = Vector3(pos.x, global_position.y, pos.z)
+	if has_target and not seated \
+			and Vector2(pos.x - target_position.x, pos.z - target_position.z).length() <= snap_radius:
 		_seat()
 
 
@@ -143,14 +159,16 @@ func _net_seat() -> void:
 
 ## Slide the last few centimetres onto the ring and lock the position.
 func _seat() -> void:
-	if seated:
+	if seated or not has_target:
 		return
 	seated = true
 	pusher = null
-	if _tween and _tween.is_running():
-		_tween.kill()
-	_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	_tween.tween_property(self, "global_position", target_position, 0.18)
+	if _seat_tween and _seat_tween.is_running():
+		_seat_tween.kill()
+	_seat_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_seat_tween.tween_property(self, "global_position", target_position, 0.18)
+	# Whatever angle it was hauled in at settles onto a detent.
+	end_adjust()
 	if _marker_mat:
 		_marker_mat.albedo_color = Color(0.35, 1.0, 1.0)
 		_marker_mat.emission = Color(0.35, 1.0, 1.0)

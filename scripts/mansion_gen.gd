@@ -634,8 +634,11 @@ func _spawn_mirrors(reserved: Array[Vector3]) -> void:
 			reserved.append(parked[0])
 		_generated_root.add_child(mirror)
 
+	# Free-roaming: haulable anywhere with no ring, so it looks exactly
+	# like a route mirror someone forgot to place.
 	var decoy := ROTATING_MIRROR_SCENE.instantiate() as RotatingMirror
 	decoy.name = "Mirror_Decoy"
+	decoy.make_free()
 	var decoy_spot: Array = _pick_perimeter_spot(_decoy_cell, reserved)
 	decoy.position = decoy_spot[0] if not decoy_spot.is_empty() else get_room_center(_decoy_cell)
 	decoy.rotation.y = deg_to_rad(15.0 * float(_rng.randi_range(0, 23)))

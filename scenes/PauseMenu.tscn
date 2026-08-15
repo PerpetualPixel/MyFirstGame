@@ -71,7 +71,7 @@ text = "[E]  —  Interact (valves, breaker, doors) / Rotate Mirror"
 
 [node name="MirrorControl" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
 theme_override_font_sizes/font_size = 20
-text = "[Mouse]  —  Swivel Mirror while rotating"
+text = "[Mouse]  —  Swivel Mirror while rotating or hauling"
 
 [node name="RotateCam" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
 theme_override_font_sizes/font_size = 20

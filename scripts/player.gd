@@ -615,9 +615,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 
-	# Hauling a mirror: [E] or [ESC] lets go; nothing else interacts.
+	# Hauling a mirror: the mouse swivels it as it travels; [E] or [ESC]
+	# lets go; nothing else interacts.
 	if _pushing_mirror:
-		if event.is_action_pressed("interact") or event.is_action_pressed("ui_cancel"):
+		if event is InputEventMouseMotion and is_instance_valid(_pushing_mirror):
+			_pushing_mirror.adjust_by_mouse(event.relative.x)
+		elif event.is_action_pressed("interact") or event.is_action_pressed("ui_cancel"):
 			_finish_push()
 			get_viewport().set_input_as_handled()
 		return
@@ -684,7 +687,15 @@ func _finish_push() -> void:
 	if _pushing_mirror == null:
 		return
 	if is_instance_valid(_pushing_mirror):
-		_pushing_mirror.end_push()
+		var mirror := _pushing_mirror
+		mirror.end_push()
+		# Let go: the swivel settles onto its detent, peers get the final
+		# angle and resting spot.
+		mirror.end_adjust()
+		if NetworkSession.multiplayer_active:
+			mirror._net_finish_angle.rpc(mirror.rotation.y)
+			if not mirror.seated:
+				mirror._net_set_position.rpc(mirror.global_position)
 	_pushing_mirror = null
 
 
@@ -708,6 +719,7 @@ func _update_pushed_mirror(delta: float) -> void:
 		if _push_sync_accum >= 0.1:
 			_push_sync_accum = 0.0
 			mirror._net_set_position.rpc(mirror.global_position)
+			mirror._net_set_angle.rpc(mirror.rotation.y)
 
 
 ## True when the hauled mirror can occupy (its position + step) without
