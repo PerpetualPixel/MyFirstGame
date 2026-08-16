@@ -97,7 +97,9 @@ func can_interact(_by: Node3D) -> bool:
 	return pusher == null
 
 
-func get_prompt(_by: Node3D = null) -> String:
+func get_prompt(by: Node3D = null) -> String:
+	if by != null and by.get("carried_item") != null:
+		return "Hands full — set the battery down first"
 	if pushable and not seated:
 		return "[E] Push Mirror"
 	# Silent: no floating text on seated mirrors — players discover the swivel.

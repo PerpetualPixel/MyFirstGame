@@ -30,6 +30,7 @@ size = Vector3(0.14, 0.28, 0.14)
 mass = 0.8
 script = ExtResource("1_grabbable")
 display_name = "Ceramic Fuse"
+sound_material = "ceramic"
 prompt_height = 0.6
 
 [node name="Body" type="MeshInstance3D" parent="."]

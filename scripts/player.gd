@@ -107,6 +107,12 @@ static func shake(amount: float, at: Vector3) -> void:
 ## interaction sites. [G] drops the most recently taken item.
 const INVENTORY_SIZE := 3
 var inventory: Array[Grabbable] = []
+## Two-hand load held out in front (the Heavy Battery) — separate from
+## the pack, one at a time, and it slows the carrier to a crawl.
+var carried_item: Grabbable = null
+@export var carry_speed_factor: float = 0.25
+## drop_at() index meaning "the carried load", not a pack slot.
+const CARRY_SLOT := -2
 ## HUD slot highlighted via the 1/2/3 keys; [G] drops it (else the
 ## newest item). Local-machine concept — never replicated.
 var selected_slot := -1
@@ -315,6 +321,11 @@ func _physics_process(delta: float) -> void:
 				rotation.y = lerp_angle(rotation.y, atan2(-to_mirror.x, -to_mirror.z), 1.0 - exp(-10.0 * delta))
 	# Hauling: the mirror seated itself (or vanished) -> hands off.
 	var speed_cap := max_speed
+	if carried_item != null:
+		if not is_instance_valid(carried_item):
+			carried_item = null
+		else:
+			speed_cap = max_speed * carry_speed_factor
 	if _pushing_mirror:
 		if not is_instance_valid(_pushing_mirror) or _pushing_mirror.seated \
 				or _pushing_mirror.pusher != self:
@@ -462,11 +473,15 @@ func _play_footstep(foot: int, speed: float) -> void:
 	AudioSynthesizer.play_at("step_%s_%d" % [surface, variant], global_position, volume, pitch, outdoors)
 
 
-## What the player is standing on, from the estate's fixed layout: the
-## mansion floors are hardwood; the porch slab, cobble walkway, garage
-## slab and its spur are stone; the driveway is gravel; the rest of the
-## grounds are lawn.
 func _surface_at(p: Vector3) -> String:
+	return surface_at(p)
+
+
+## What stands at `p`, from the estate's fixed layout: the mansion floors
+## are hardwood; the porch slab, cobble walkway, garage slab and its
+## spur are stone; the driveway is gravel; the rest of the grounds are
+## lawn. Static so items can ask what they landed on.
+static func surface_at(p: Vector3) -> String:
 	if absf(p.x) <= 15.2 and absf(p.z) <= 15.2:
 		return "wood"
 	if absf(p.x) <= 6.0 and p.z > 14.8 and p.z < 25.4:
@@ -498,9 +513,11 @@ func _animate_visual(delta: float) -> void:
 
 	if _anim_player and not _walk_anim.is_empty():
 		_visual.rotation.x = lerpf(_visual.rotation.x, lean, lean_weight)
-		# Hands on a mirror: pivoting, or hauling while standing still,
-		# holds the reach pose. Any walking releases it into the gait.
-		if _adjusting_mirror != null or (pushing and speed <= 0.1):
+		# Hands on a mirror (pivoting, or hauling while standing still) or
+		# under a carried load holds the reach pose. Walking releases it
+		# into the gait — slow and heavy under the battery.
+		var carrying := carried_item != null
+		if _adjusting_mirror != null or ((pushing or carrying) and speed <= 0.1):
 			_set_hold_pose(true)
 			return
 		_set_hold_pose(false)
@@ -518,8 +535,9 @@ func _animate_visual(delta: float) -> void:
 				gait = "moves/push"
 			if _anim_player.current_animation != gait or not _anim_player.is_playing():
 				_anim_player.play(gait, 0.25)
-			# Foot cadence follows actual movement speed (heavy when hauling).
-			_anim_player.speed_scale = (0.45 + stride * 0.5) if pushing else (0.5 + stride * 0.9)
+			# Foot cadence follows actual movement speed (heavy when hauling
+			# or under the battery).
+			_anim_player.speed_scale = (0.45 + stride * 0.5) if (pushing or carrying) else (0.5 + stride * 0.9)
 		elif not _idle_anim.is_empty():
 			if _anim_player.current_animation != _idle_anim:
 				_anim_player.play(_idle_anim, 0.25)
@@ -746,7 +764,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		var target := get_nearest_interactable()
 		if target is RotatingMirror:
 			var mirror := target as RotatingMirror
-			if mirror.pushable and not mirror.seated:
+			if carried_item != null:
+				# Both hands are under the battery.
+				AudioSynthesizer.play_at("tick", global_position, -12.0, 0.6)
+			elif mirror.pushable and not mirror.seated:
 				# Unseated pushable: take hold and haul it to its ring (no
 				# grip step: the mirror rides the grip offset every frame,
 				# so moving the player would drag it along).
@@ -760,8 +781,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif target:
 			request_interact(target)
 	elif event.is_action_pressed("drop"):
-		var drop_index := selected_slot if selected_slot >= 0 and selected_slot < inventory.size() \
-			else inventory.size() - 1
+		# A carried load always goes down first — it is what's in hand.
+		var drop_index := CARRY_SLOT if carried_item != null \
+			else (selected_slot if selected_slot >= 0 and selected_slot < inventory.size() else inventory.size() - 1)
 		request_drop(drop_index)
 		selected_slot = -1
 	elif event is InputEventKey and event.pressed and not event.echo \
@@ -790,7 +812,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## stands relative to the player right now, clamped so the two bodies
 ## never overlap; from here on it rides that offset in WORLD space.
 func start_pushing(mirror: RotatingMirror) -> bool:
-	if _pushing_mirror != null or not mirror.begin_push(self):
+	if _pushing_mirror != null or carried_item != null or not mirror.begin_push(self):
 		return false
 	_pushing_mirror = mirror
 	var offset := mirror.global_position - global_position
@@ -1024,6 +1046,14 @@ func _spawn_ping(at: Vector3) -> void:
 
 ## Called by Grabbable.interact(); stows the item in the pack.
 func pick_up(item: Grabbable) -> void:
+	if item.carried:
+		# Two-hand load: one at a time, never into the pack.
+		if carried_item != null or item == carried_item:
+			return
+		carried_item = item
+		item.carry(self)
+		play_action("moves/pick_up")
+		return
 	if inventory.has(item) or inventory.size() >= INVENTORY_SIZE:
 		return
 	inventory.append(item)
@@ -1031,14 +1061,24 @@ func pick_up(item: Grabbable) -> void:
 	play_action("moves/pick_up")
 
 
-## [G]: drop the most recently taken item back into the world.
+## [G]: set down the carried load if any, else drop the newest pack item.
 func drop_held() -> void:
-	drop_at(inventory.size() - 1)
+	if carried_item != null:
+		drop_at(CARRY_SLOT)
+	else:
+		drop_at(inventory.size() - 1)
 
 
 ## Drop the pack item at `index` (from the HUD's selected slot or a
-## drag out of the bar).
+## drag out of the bar), or the carried load for CARRY_SLOT.
 func drop_at(index: int) -> void:
+	if index == CARRY_SLOT:
+		if carried_item == null:
+			return
+		var load := carried_item
+		carried_item = null
+		load.release()
+		return
 	if index < 0 or index >= inventory.size():
 		return
 	var item: Grabbable = inventory[index]
@@ -1090,8 +1130,10 @@ func inventory_full() -> bool:
 	return inventory.size() >= INVENTORY_SIZE
 
 
-## First carried item belonging to `group`, or null.
+## First held item belonging to `group` (the two-hand load counts), or null.
 func inventory_find(group: String) -> Grabbable:
+	if carried_item != null and is_instance_valid(carried_item) and carried_item.is_in_group(group):
+		return carried_item
 	for item in inventory:
 		if is_instance_valid(item) and item.is_in_group(group):
 			return item
@@ -1100,6 +1142,8 @@ func inventory_find(group: String) -> Grabbable:
 
 ## Forget a consumed/placed item (does not free or move the node).
 func inventory_remove(item: Grabbable) -> void:
+	if item == carried_item:
+		carried_item = null
 	inventory.erase(item)
 
 

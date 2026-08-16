@@ -64,6 +64,34 @@ func _apply_scale(value: float) -> void:
 # --- Inventory bar (3 pack slots, bottom-left) -----------------------------
 
 
+## Item group -> icon. Every pickup in the estate has one; the first
+## matching group wins (the wrenches share "wrenches", so their specific
+## groups come first).
+const ITEM_ICONS := {
+	"fuses": "res://assets/ui/FuseIcon.png",
+	"crowbars": "res://assets/ui/CrowbarIcon.png",
+	"small_wrenches": "res://assets/ui/SmallWrenchIcon.svg",
+	"big_wrenches": "res://assets/ui/WrenchIcon.svg",
+	"clock_gears": "res://assets/ui/GearIcon.svg",
+	"will_items": "res://assets/ui/WillIcon.svg",
+	"batteries": "res://assets/ui/BatteryIcon.svg",
+}
+var _icon_cache := {}
+var _carry_panel: PanelContainer
+var _carry_icon: TextureRect
+var _carry_label: Label
+
+
+func _icon_for(item: Node) -> Texture2D:
+	for group in ITEM_ICONS:
+		if item.is_in_group(group):
+			var path: String = ITEM_ICONS[group]
+			if not _icon_cache.has(path):
+				_icon_cache[path] = load(path) if ResourceLoader.exists(path) else null
+			return _icon_cache[path]
+	return null
+
+
 func _build_inventory_bar() -> void:
 	if ResourceLoader.exists("res://assets/ui/FuseIcon.png"):
 		_fuse_icon = load("res://assets/ui/FuseIcon.png")
@@ -96,6 +124,43 @@ func _build_inventory_bar() -> void:
 		slot.drop_to_world.connect(_on_slot_drop_to_world)
 		bar.add_child(slot)
 		_inv_slots.append(slot)
+
+	# "In hand" panel beside the pack: the two-hand load being carried
+	# (the Heavy Battery), with its icon. Hidden when hands are free.
+	_carry_panel = PanelContainer.new()
+	var carry_style := _slot_style_normal.duplicate() as StyleBoxFlat
+	carry_style.border_color = Color(0.35, 0.85, 1.0, 0.9)
+	_carry_panel.add_theme_stylebox_override("panel", carry_style)
+	_carry_panel.custom_minimum_size = Vector2(150, 76)
+	_carry_panel.visible = false
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	_carry_panel.add_child(row)
+	_carry_icon = TextureRect.new()
+	_carry_icon.custom_minimum_size = Vector2(60, 60)
+	_carry_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_carry_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	row.add_child(_carry_icon)
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(col)
+	var head := Label.new()
+	head.text = "IN HAND"
+	head.add_theme_font_size_override("font_size", 11)
+	head.add_theme_color_override("font_color", Color(0.35, 0.85, 1.0))
+	col.add_child(head)
+	_carry_label = Label.new()
+	_carry_label.add_theme_font_size_override("font_size", 12)
+	_carry_label.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7))
+	_carry_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	_carry_label.custom_minimum_size = Vector2(76, 0)
+	col.add_child(_carry_label)
+	var hint := Label.new()
+	hint.text = "[G] set down"
+	hint.add_theme_font_size_override("font_size", 10)
+	hint.add_theme_color_override("font_color", Color(0.6, 0.55, 0.45))
+	col.add_child(hint)
+	bar.add_child(_carry_panel)
 
 
 func _local_player() -> Node:
@@ -132,13 +197,21 @@ func _refresh_inventory_bar() -> void:
 		return
 	var items: Array = local.inventory
 	var selected: int = local.get("selected_slot")
+	var carried: Node = local.get("carried_item")
 	var signature := "%d|" % selected
 	for item in items:
 		if is_instance_valid(item):
 			signature += item.name + ("!" if item.get("spent") else "") + ";"
+	signature += "|carry:" + (carried.name if carried != null and is_instance_valid(carried) else "-")
 	if signature == _inv_signature:
 		return
 	_inv_signature = signature
+	if _carry_panel != null:
+		var show := carried != null and is_instance_valid(carried)
+		_carry_panel.visible = show
+		if show:
+			_carry_icon.texture = _icon_for(carried)
+			_carry_label.text = str(carried.get("display_name"))
 	for i in _inv_slots.size():
 		var slot := _inv_slots[i]
 		for child in slot.get_children():
@@ -150,11 +223,7 @@ func _refresh_inventory_bar() -> void:
 			continue
 		var item: Node = items[i]
 		slot.item_name = str(item.get("display_name"))
-		var icon_tex: Texture2D = null
-		if item.is_in_group("fuses"):
-			icon_tex = _fuse_icon
-		elif item.is_in_group("crowbars"):
-			icon_tex = _crowbar_icon
+		var icon_tex: Texture2D = _icon_for(item)
 		var is_spent: bool = item.get("spent") == true
 		if icon_tex != null:
 			var icon := TextureRect.new()

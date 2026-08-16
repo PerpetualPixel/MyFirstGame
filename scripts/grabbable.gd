@@ -9,6 +9,14 @@ extends Interactable
 signal grabbed(by: Node3D)
 signal dropped(by: Node3D)
 
+## What this thing sounds like when handled: "metal" (tools, gears),
+## "metal_heavy" (the battery), "ceramic" (fuses), "paper" (the will).
+## Drops on hard floor clang/clink; on the lawn they thud, muffled.
+@export var sound_material := "metal"
+## True for two-hand loads (the Heavy Battery): never goes in the pack,
+## it is carried visibly in front and slows the carrier right down.
+@export var carried := false
+
 ## Who is currently carrying this, or null when it's loose in the world.
 var holder: Node3D = null
 
@@ -61,6 +69,10 @@ func _safe_drop_position(carrier: Node3D) -> Vector3:
 
 
 func get_prompt(by: Node3D = null) -> String:
+	if carried:
+		if by != null and by.get("carried_item") != null:
+			return "Hands full — set that down first"
+		return "[E] Lift %s (both hands)" % display_name
 	if by != null and by.has_method("inventory_full") and by.inventory_full():
 		return "Pack Full"
 	return "[E] Take %s" % display_name
@@ -75,6 +87,29 @@ func interact(by: Node3D) -> void:
 ## Vanish into a carrier's pack: frozen, collision off, hidden, riding
 ## the carrier node until released, mounted, or consumed.
 func stash(by: Node3D) -> void:
+	_play_handling("pickup", global_position)
+	_take_hold(by)
+	visible = false
+	reparent(by)
+	transform = Transform3D.IDENTITY
+	grabbed.emit(by)
+
+
+## Two-hand carry: frozen, collision off, but VISIBLE, held out in front
+## at the carrier's hold point until set down or installed.
+func carry(by: Node3D) -> void:
+	_play_handling("pickup", global_position)
+	_take_hold(by)
+	visible = true
+	var mount_node: Node = by.get("hold_point") if by.get("hold_point") != null else by
+	reparent(mount_node)
+	# The battery's origin is its base: hang it a little below the hold
+	# point so the case sits at chest height, out in front of the body.
+	transform = Transform3D(Basis.IDENTITY, Vector3(0, -0.32, -0.12))
+	grabbed.emit(by)
+
+
+func _take_hold(by: Node3D) -> void:
 	holder = by
 	_original_parent = get_parent()
 	_original_layer = _body.collision_layer
@@ -82,10 +117,39 @@ func stash(by: Node3D) -> void:
 	_body.collision_layer = 0
 	_body.collision_mask = 0
 	_body.freeze = true
-	visible = false
-	reparent(by)
-	transform = Transform3D.IDENTITY
-	grabbed.emit(by)
+
+
+## Pick-up / set-down foley matched to the material, and on a drop to
+## the floor it lands on (lawn muffles everything).
+func _play_handling(action: String, at: Vector3) -> void:
+	var surface := Player.surface_at(at)
+	var soft := surface == "grass"
+	var sound := ""
+	var volume := -10.0
+	var pitch := 1.0
+	match sound_material:
+		"metal_heavy":
+			if action == "pickup":
+				sound = "pickup_heavy"
+			else:
+				sound = "drop_heavy_soft" if soft else "drop_heavy"
+				volume = -14.0 if soft else -4.0
+		"ceramic":
+			sound = "pickup_ceramic" if action == "pickup" else ("drop_ceramic_soft" if soft else "drop_ceramic")
+			volume = -12.0
+		"paper":
+			sound = "pickup_paper" if action == "pickup" else "drop_paper"
+			volume = -12.0
+		_:
+			if action == "pickup":
+				sound = "pickup_metal"
+			else:
+				sound = "drop_metal_soft" if soft else "drop_metal"
+				volume = -16.0 if soft else -8.0
+			# Wood rings a touch duller than stone.
+			if surface == "wood" and action == "drop":
+				pitch = 0.92
+	AudioSynthesizer.play_at(sound, at, volume, pitch, surface != "wood")
 
 
 ## Park this item inside a mechanism (frozen, no collision, visible) —
@@ -117,4 +181,7 @@ func release() -> void:
 	_body.freeze = false
 	_body.linear_velocity = Vector3.ZERO
 	_body.angular_velocity = Vector3.ZERO
+	# The item falls the last stretch: land the foley a beat after release.
+	var land_at := global_position
+	get_tree().create_timer(0.18).timeout.connect(func() -> void: _play_handling("drop", land_at))
 	dropped.emit(was_holder)

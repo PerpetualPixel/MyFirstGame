@@ -39,6 +39,19 @@ func _ready() -> void:
 	_streams["laser_hum"] = _gen_laser_hum()
 	_streams["rumble"] = _gen_rumble()
 	_streams["whoosh"] = _gen_whoosh()
+	# Item handling foley: what each material does in the hand and on the
+	# floor (hard) or the lawn (soft, muffled).
+	_streams["pickup_metal"] = _gen_pickup_metal()
+	_streams["pickup_heavy"] = _gen_pickup_heavy()
+	_streams["pickup_ceramic"] = _gen_pickup_ceramic()
+	_streams["pickup_paper"] = _gen_paper(0.16, 0.5)
+	_streams["drop_metal"] = _gen_drop_metal(false)
+	_streams["drop_metal_soft"] = _gen_drop_metal(true)
+	_streams["drop_heavy"] = _gen_drop_heavy(false)
+	_streams["drop_heavy_soft"] = _gen_drop_heavy(true)
+	_streams["drop_ceramic"] = _gen_drop_ceramic(false)
+	_streams["drop_ceramic_soft"] = _gen_drop_ceramic(true)
+	_streams["drop_paper"] = _gen_paper(0.22, 0.35)
 
 
 func _exit_tree() -> void:
@@ -369,6 +382,166 @@ static func _gen_whoosh() -> AudioStreamWAV:
 		var mix := t / 0.35  # sweeps upward through the swing
 		s[i] = lo[i] * (1.0 - mix) + hi[i] * mix
 	return _make_wav(_normalize(s, 0.45))
+
+
+# --- Item handling -------------------------------------------------------
+# Pick-ups are the object shifting in the hand; drops are the object
+# meeting the floor. Metal rings, ceramic clinks, paper flops, and the
+# heavy battery lands like the lead brick it is. "Soft" variants are the
+# lawn: the transient is smothered, only the thud gets through.
+
+
+## Tools lifted: two quick metallic taps as the piece settles in the grip.
+static func _gen_pickup_metal() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 0.16)
+	var raw := PackedFloat32Array()
+	raw.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var tap := exp(-t * 90.0) + (exp(-(t - 0.07) * 90.0) if t > 0.07 else 0.0) * 0.7
+		raw[i] = (randf() * 2.0 - 1.0) * tap * 0.06
+	var a := _resonate(raw, randf_range(2300.0, 2700.0), 0.975)
+	var b := _resonate(raw, randf_range(3500.0, 4100.0), 0.965)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	for i in n:
+		s[i] = a[i] * 1.6 + b[i] * 1.0
+	return _make_wav(_normalize(s, 0.55))
+
+
+## The battery hefted: a low grunt of effort in the case, a strap creak,
+## and the terminals rattling.
+static func _gen_pickup_heavy() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 0.32)
+	var raw := PackedFloat32Array()
+	raw.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		raw[i] = (randf() * 2.0 - 1.0) * exp(-t * 26.0) * 0.05
+	var rattle := _resonate(raw, 1800.0, 0.94)
+	var body := _resonate(raw, 220.0, 0.985)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var thump := sin(TAU * 70.0 * t) * exp(-t * 20.0) * 0.6
+		var creak := sin(TAU * (900.0 + 200.0 * t) * t) * exp(-t * 18.0) * 0.06 * (0.5 + 0.5 * signf(sin(TAU * 40.0 * t)))
+		s[i] = thump + body[i] * 1.5 + rattle[i] * 0.9 + creak
+	return _make_wav(_normalize(s, 0.75))
+
+
+## A ceramic cartridge lifted: one glassy tick.
+static func _gen_pickup_ceramic() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 0.12)
+	var raw := PackedFloat32Array()
+	raw.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		raw[i] = (randf() * 2.0 - 1.0) * exp(-t * 140.0) * 0.06
+	var s := _resonate(raw, randf_range(4200.0, 5200.0), 0.98)
+	return _make_wav(_normalize(s, 0.5))
+
+
+## Paper handled: a dry rustle (`dur` seconds, `crackle` density).
+static func _gen_paper(dur: float, crackle: float) -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * dur)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var prev := 0.0
+	var flutter := 0.0
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var noise := randf() * 2.0 - 1.0
+		var hp := noise - prev
+		prev = noise
+		if randf() < 0.004 * crackle:
+			flutter = 1.0
+		flutter *= 0.985
+		var env := minf(t / 0.02, 1.0) * exp(-t * (14.0 / dur))
+		s[i] = hp * (0.25 + flutter * 0.6) * env
+	return _make_wav(_normalize(s, 0.45))
+
+
+## A tool dropped: hard = clang with a bright ring and a bounce; soft =
+## a smothered thud with the ring choked off.
+static func _gen_drop_metal(soft: bool) -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * (0.28 if soft else 0.55))
+	var raw := PackedFloat32Array()
+	raw.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var hit := exp(-t * 60.0)
+		var bounce := (exp(-(t - 0.16) * 70.0) if t > 0.16 else 0.0) * 0.5
+		raw[i] = (randf() * 2.0 - 1.0) * (hit + bounce) * 0.06
+	var s := PackedFloat32Array()
+	s.resize(n)
+	if soft:
+		var lp := 0.0
+		for i in n:
+			var t := float(i) / SAMPLE_RATE
+			lp += 0.18 * (raw[i] * 8.0 - lp)
+			s[i] = lp + sin(TAU * 110.0 * t) * exp(-t * 30.0) * 0.5
+	else:
+		var r1 := _resonate(raw, randf_range(1050.0, 1250.0), 0.992)
+		var r2 := _resonate(raw, randf_range(2600.0, 2900.0), 0.988)
+		var r3 := _resonate(raw, randf_range(4000.0, 4400.0), 0.98)
+		for i in n:
+			var t := float(i) / SAMPLE_RATE
+			s[i] = r1[i] * 1.2 + r2[i] * 0.9 + r3[i] * 0.5 + sin(TAU * 140.0 * t) * exp(-t * 45.0) * 0.4
+	return _make_wav(_normalize(s, 0.8))
+
+
+## The battery set down: a floor-shaking thud, terminal rattle, and on a
+## hard floor a short case clang. On the lawn: just the thud.
+static func _gen_drop_heavy(soft: bool) -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 0.5)
+	var raw := PackedFloat32Array()
+	raw.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		raw[i] = (randf() * 2.0 - 1.0) * exp(-t * 40.0) * 0.06
+	var rattle := _resonate(raw, 1700.0, 0.95)
+	var clang := _resonate(raw, 900.0, 0.985)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var lp := 0.0
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		lp += 0.03 * ((randf() * 2.0 - 1.0) - lp)
+		var thud := sin(TAU * 55.0 * t) * exp(-t * 14.0) * 0.9 + lp * 4.0 * exp(-t * 10.0)
+		if soft:
+			s[i] = thud + rattle[i] * 0.2
+		else:
+			s[i] = thud + rattle[i] * 0.8 + clang[i] * 0.9
+	return _make_wav(_normalize(s, 0.9))
+
+
+## A ceramic fuse dropped: hard = bright clink and a skitter; soft = a
+## dull tick in the grass.
+static func _gen_drop_ceramic(soft: bool) -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * (0.12 if soft else 0.3))
+	var raw := PackedFloat32Array()
+	raw.resize(n)
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var hit := exp(-t * 120.0)
+		var skitter := 0.0
+		if not soft:
+			for k in [0.09, 0.15, 0.19]:
+				if t > k:
+					skitter += exp(-(t - k) * 150.0) * 0.4
+		raw[i] = (randf() * 2.0 - 1.0) * (hit + skitter) * 0.06
+	var s: PackedFloat32Array
+	if soft:
+		s = _resonate(raw, 2200.0, 0.93)
+	else:
+		var a := _resonate(raw, randf_range(4600.0, 5400.0), 0.985)
+		var b := _resonate(raw, randf_range(7000.0, 8000.0), 0.97)
+		s = PackedFloat32Array()
+		s.resize(n)
+		for i in n:
+			s[i] = a[i] * 1.2 + b[i] * 0.6
+	return _make_wav(_normalize(s, 0.6))
 
 
 # --- Footsteps -----------------------------------------------------------

@@ -23,6 +23,7 @@ size = Vector3(0.5, 0.12, 0.18)
 [node name="SmallWrench" type="RigidBody3D" groups=["wrenches", "small_wrenches"]]
 script = ExtResource("1_grabbable")
 display_name = "Small Wrench"
+sound_material = "metal"
 prompt_height = 0.7
 
 [node name="Handle" type="MeshInstance3D" parent="."]

@@ -33,6 +33,8 @@ size = Vector3(0.46, 0.5, 0.3)
 mass = 6.0
 script = ExtResource("1_grabbable")
 display_name = "Heavy Battery"
+sound_material = "metal_heavy"
+carried = true
 prompt_height = 0.9
 
 [node name="Case" type="MeshInstance3D" parent="."]

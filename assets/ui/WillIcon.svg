@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- The Will: rolled parchment with a red wax seal and ribbon -->
+  <g transform="rotate(-25 64 64)">
+    <rect x="22" y="40" width="84" height="48" rx="4" fill="#e6d3a3"/>
+    <rect x="22" y="40" width="84" height="48" rx="4" fill="none" stroke="#b7975a" stroke-width="2"/>
+    <ellipse cx="22" cy="64" rx="9" ry="24" fill="#cbb27a"/>
+    <ellipse cx="22" cy="64" rx="4" ry="12" fill="#8c7440"/>
+    <ellipse cx="106" cy="64" rx="9" ry="24" fill="#d9c48d"/>
+    <ellipse cx="106" cy="64" rx="4" ry="12" fill="#8c7440"/>
+    <g stroke="#7a6640" stroke-width="2.5" stroke-linecap="round" opacity="0.7">
+      <line x1="38" y1="52" x2="90" y2="52"/>
+      <line x1="38" y1="61" x2="84" y2="61"/>
+      <line x1="38" y1="70" x2="88" y2="70"/>
+      <line x1="38" y1="79" x2="66" y2="79"/>
+    </g>
+    <path d="M78 74 l14 26 l6 -8 l8 6 l-12 -30 z" fill="#8a1c1c"/>
+    <circle cx="80" cy="76" r="11" fill="#b32424"/>
+    <circle cx="80" cy="76" r="6" fill="#7d1515"/>
+  </g>
+</svg>

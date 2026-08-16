@@ -25,6 +25,22 @@ func _run() -> void:
 	for i in 30:
 		await physics_frame
 
+	# Every pickup has a HUD icon that loads, and every handling foley
+	# sample was synthesized.
+	var hud: Node = main.get_node("HUD")
+	for group in hud.ITEM_ICONS:
+		var tex: Texture2D = load(hud.ITEM_ICONS[group]) if ResourceLoader.exists(hud.ITEM_ICONS[group]) else null
+		if tex == null:
+			print("TEST FAIL: missing item icon for group %s (%s)" % [group, hud.ITEM_ICONS[group]])
+			quit(1)
+			return
+	for sound in ["pickup_metal", "pickup_heavy", "pickup_ceramic", "pickup_paper", "drop_metal",
+			"drop_metal_soft", "drop_heavy", "drop_heavy_soft", "drop_ceramic", "drop_ceramic_soft", "drop_paper"]:
+		if not AudioSynthesizer.instance._streams.has(sound):
+			print("TEST FAIL: missing handling sound %s" % sound)
+			quit(1)
+			return
+
 	var gen: MansionGenerator = main.get_node("MansionGenerator")
 	var route: Dictionary = gen.active_route
 	print("run layout: route=%s valves=%s clock=%s gears=%s" % [route["name"], gen._valve_cells, gen._clock_cell, gen._gear_cells])
@@ -578,18 +594,58 @@ func _run() -> void:
 	for i in 10:
 		await physics_frame
 	player.pick_up(battery)
-	if not player.inventory.has(battery):
-		print("TEST FAIL: could not pack the Heavy Battery")
+	# Two-hand load: carried in front, never in the pack, and visible.
+	if player.carried_item != battery or player.inventory.has(battery) or not battery.visible:
+		print("TEST FAIL: Heavy Battery was not lifted as a carried load")
+		quit(1)
+		return
+	if battery.get_parent() != player.hold_point:
+		print("TEST FAIL: carried battery is not riding the hold point")
+		quit(1)
+		return
+	# Carrying it slows the player to a crawl (25% speed): walk a second on
+	# the spot and check the top speed reached.
+	var carry_top := 0.0
+	Input.action_press("move_up")
+	for i in 60:
+		await physics_frame
+		carry_top = maxf(carry_top, Vector2(player.velocity.x, player.velocity.z).length())
+	Input.action_release("move_up")
+	for i in 20:
+		await physics_frame
+	if carry_top > player.max_speed * player.carry_speed_factor + 0.15 or carry_top < 0.3:
+		print("TEST FAIL: carrying speed %.2f (want ~%.2f)" % [carry_top, player.max_speed * player.carry_speed_factor])
+		quit(1)
+		return
+	# Hands full: mirrors refuse hauling.
+	if decoy != null and player.start_pushing(decoy):
+		print("TEST FAIL: hauled a mirror while carrying the battery")
+		quit(1)
+		return
+	# Set it down and pick it back up (G-drop path), then install.
+	player.drop_at(player.CARRY_SLOT)
+	for i in 10:
+		await physics_frame
+	if player.carried_item != null or battery.get_parent() == player.hold_point:
+		print("TEST FAIL: could not set the battery down")
+		quit(1)
+		return
+	player.teleport(battery.global_position + Vector3(0, 0, 1.0))
+	for i in 10:
+		await physics_frame
+	player.pick_up(battery)
+	if player.carried_item != battery:
+		print("TEST FAIL: could not lift the battery again")
 		quit(1)
 		return
 	var cradle: BatterySocket = emitter.get_node("Housing")
 	cradle.interact(player)
 	# The pack still holds both (spent) wrenches; only the battery leaves.
-	if not emitter.powered or player.inventory.has(battery):
+	if not emitter.powered or player.carried_item != null or player.inventory.has(battery):
 		print("TEST FAIL: battery install did not power the emitter")
 		quit(1)
 		return
-	print("battery install powers the laser OK")
+	print("battery carry + install powers the laser OK")
 	# Align this run's route to its published solution angles.
 	for i in route["mirrors"].size():
 		_mirror_near(mirrors, route["mirrors"][i]).rotation.y = deg_to_rad(route["solutions"][i])
