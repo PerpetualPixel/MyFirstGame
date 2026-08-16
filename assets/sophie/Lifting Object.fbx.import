@@ -15,6 +15,7 @@ dest_files=["res://.godot/imported/Lifting Object.fbx-a3f4fd3438b7ee429b59eef824
 
 nodes/root_type=""
 nodes/root_name=""
+nodes/root_script=null
 mesh_library/use_node_names_as_mesh_names=false
 array_mesh/deduplicate_surfaces=true
 nodes/apply_root_scale=true

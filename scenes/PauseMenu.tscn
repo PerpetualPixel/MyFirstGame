@@ -94,7 +94,7 @@ alignment = 1
 
 [node name="HintsLabel" type="Label" parent="Overlay/ControlsCenter/Panel/Lines/HintsContainer"]
 theme_override_font_sizes/font_size = 20
-text = "Hints: "
+text = "Interaction Prompts: "
 
 [node name="HintsToggle" type="CheckButton" parent="Overlay/ControlsCenter/Panel/Lines/HintsContainer"]
 button_pressed = true

@@ -133,6 +133,8 @@ var _valve_cells: Array = []
 ## Wall spots where hauled mirrors (and the decoy) were parked this run;
 ## furniture keeps clear of them.
 var _mirror_parking: Array[Vector3] = []
+## Floor spots where a misplaced prism is lying this run.
+var _loose_prisms: Array[Vector3] = []
 var _clock_cell := Vector2i(1, 1)
 var _gear_cells: Array = []
 var _decoy_cell := Vector2i(2, 1)
@@ -201,6 +203,11 @@ func generate() -> void:
 	_generated_root.name = "Generated"
 	add_child(_generated_root)
 	_door_counter = 0
+	# Per-run placement state must not leak into a second generate() —
+	# stale spots would keep blocking furniture in rooms that no longer
+	# hold anything.
+	_mirror_parking.clear()
+	_loose_prisms.clear()
 	PlayerNotes.clear()  # fresh run, fresh notebook
 
 	var chosen_seed := generation_seed
@@ -792,6 +799,8 @@ func _scatter_prism(node_name: String, reserved: Array[Vector3]) -> void:
 	prism.rotation.y = _rng.randf_range(0.0, TAU)
 	_generated_root.add_child(prism)
 	reserved.append(at)
+	# Furniture must not be dropped on top of it (props spawn later).
+	_loose_prisms.append(at)
 
 
 ## A seeded free wall spot in `cell`: off the beam path and at least
@@ -996,6 +1005,7 @@ func _spawn_props() -> void:
 	# and the mirrors' wall parking spots.
 	var blocked: Array[Vector3] = []
 	blocked.append_array(_mirror_parking)
+	blocked.append_array(_loose_prisms)
 	blocked.append(get_room_center(_clock_cell) + Vector3(-3.0, 0, 4.45))
 	if not _valve_cells.is_empty():
 		var press_room := get_room_center(_valve_cells[0])

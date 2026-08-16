@@ -11,6 +11,13 @@ extends Node
 
 enum State { PREGAME, PLAYING, WON, LOST }
 
+## Countdown once the breaker powers the mansion (the crowbar/fuse hunt
+## before that is untimed). 4:00 is the game's billed pitch — the menu
+## art reads "A 4-Minute Co-op Puzzle Heist" — so it stays the default.
+## For reference when tuning: the post-power critical path measures
+## ~290 m, i.e. ~48 s of pure travel at top speed with perfect routing,
+## before any searching, puzzle time, or the half-speed battery carry.
+## Raise this if playtests show first-timers never finish.
 @export var run_time: float = 240.0
 
 @onready var _mansion: MansionGenerator = $"../MansionGenerator"
@@ -332,7 +339,7 @@ func _refresh_objectives() -> void:
 	_obj_wrench.modulate = done_color if wrenches_ok else Color.WHITE
 	_obj_steam.text = "%s Balance the Hydraulic Press" % _checkbox(_pressure_done)
 	_obj_steam.modulate = done_color if _pressure_done else Color.WHITE
-	_obj_light.text = "%s Align Laser Circuit" % _checkbox(_light_done)
+	_obj_light.text = "%s Aim the Laser at the Wall Safe" % _checkbox(_light_done)
 	_obj_light.modulate = done_color if _light_done else Color.WHITE
 	_obj_will.text = "%s Retrieve Will & Escape" % _checkbox(will_ok)
 	_obj_will.modulate = done_color if will_ok else Color.WHITE

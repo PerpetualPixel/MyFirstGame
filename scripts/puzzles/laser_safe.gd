@@ -130,6 +130,8 @@ func _open_panel() -> void:
 	_panel_open = true
 	_panel.visible = true
 	_panel.add_to_group("modal_ui")
+	# Keep the note in the [Tab] pad so it can be re-read from anywhere.
+	PlayerNotes.add("Wall safe — \"I lost the keys sorry. Only something as strong as a laser can crack this open.\"")
 	if NetworkSession.multiplayer_active:
 		_set_local_lock(true)
 	else:

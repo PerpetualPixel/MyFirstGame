@@ -95,15 +95,27 @@ text = "[W] [A] [S] [D]  —  Move Character"
 
 [node name="Interact" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18
-text = "[E]  —  Interact / Rotate Mirror"
+text = "[E]  —  Interact / Pivot Prism"
 
 [node name="MirrorControl" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18
-text = "[Mouse]  —  Swivel Mirror (when rotating)"
+text = "[Mouse]  —  Swivel prism while pivoting or hauling"
 
 [node name="Drop" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18
-text = "[Q]  —  Drop Carried Item"
+text = "[G]  —  Drop / Set Down"
+
+[node name="RotateCam" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 18
+text = "[Q]  —  Rotate Camera 90°"
+
+[node name="Emote" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 18
+text = "[B]  —  Emote Wheel (hold)"
+
+[node name="Notes" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
+theme_override_font_sizes/font_size = 18
+text = "[Tab]  —  Notes"
 
 [node name="Ping" type="Label" parent="UI/ControlsModal/Center/Panel/VBox"]
 theme_override_font_sizes/font_size = 18

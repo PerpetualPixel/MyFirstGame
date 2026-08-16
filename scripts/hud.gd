@@ -14,8 +14,6 @@ var _notes_panel: PanelContainer
 var _notes_list: VBoxContainer
 var _inv_slots: Array[InventorySlot] = []
 var _inv_signature := ""
-var _fuse_icon: Texture2D
-var _crowbar_icon: Texture2D
 var _slot_style_normal: StyleBoxFlat
 var _slot_style_selected: StyleBoxFlat
 
@@ -40,9 +38,11 @@ var _emote_wheel: EmoteWheel
 
 func _input(event: InputEvent) -> void:
 	# Hold the emote key for the wheel; release plays the highlighted one.
+	# Never over a minigame panel (co-op panels don't pause the tree).
 	if event.is_action_pressed("emote"):
 		var local := _local_player()
-		if local != null and not get_tree().paused:
+		var busy := not get_tree().get_nodes_in_group("modal_ui").is_empty()
+		if local != null and not get_tree().paused and not busy:
 			_emote_wheel.open(local)
 			get_viewport().set_input_as_handled()
 		return
@@ -119,10 +119,6 @@ func _icon_for(item: Node) -> Texture2D:
 
 
 func _build_inventory_bar() -> void:
-	if ResourceLoader.exists("res://assets/ui/FuseIcon.png"):
-		_fuse_icon = load("res://assets/ui/FuseIcon.png")
-	if ResourceLoader.exists("res://assets/ui/CrowbarIcon.png"):
-		_crowbar_icon = load("res://assets/ui/CrowbarIcon.png")
 	_slot_style_normal = StyleBoxFlat.new()
 	_slot_style_normal.bg_color = Color(0.06, 0.05, 0.04, 0.8)
 	_slot_style_normal.border_color = Color(0.5, 0.4, 0.2, 0.8)

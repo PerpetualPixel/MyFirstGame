@@ -87,31 +87,31 @@ text = "▼ Objectives"
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 20
-text = "[ ] Power the Front Breakers"
+text = "[ ] Restore Power"
 
 [node name="ClockObjective" type="Label" parent="Objectives"]
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 20
-text = "[ ] Restore the Grandfather Clock (0/3 gears)"
+text = "[ ] Restore the Grandfather Clock"
 
 [node name="WrenchObjective" type="Label" parent="Objectives"]
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 20
-text = "[ ] Find the Brass Wrench"
+text = "[ ] Gather the Two Wrenches"
 
 [node name="SteamObjective" type="Label" parent="Objectives"]
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 20
-text = "[ ] Synchronize Steam Pressure (0/2 - 25s window)"
+text = "[ ] Balance the Hydraulic Press"
 
 [node name="LightObjective" type="Label" parent="Objectives"]
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 20
-text = "[ ] Align Laser Circuit"
+text = "[ ] Aim the Laser at the Wall Safe"
 
 [node name="WillObjective" type="Label" parent="Objectives"]
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)

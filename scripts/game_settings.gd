@@ -40,25 +40,37 @@ const PROMPT_TOKENS := {
 }
 
 static var _bindings_loaded := false
+## key_label() is called for every prompt refresh (20 Hz), and resolving
+## a physical keycode hits the display server — so labels are cached and
+## only rebuilt when a binding actually changes.
+static var _label_cache := {}
 
 
 ## Human label for an action's first bound key/button ("E", "Mouse 4").
 static func key_label(action: String) -> String:
-	if not InputMap.has_action(action):
-		return "?"
-	for ev in InputMap.action_get_events(action):
-		return event_label(ev)
-	return "—"
+	if _label_cache.has(action):
+		return _label_cache[action]
+	var label := "?"
+	if InputMap.has_action(action):
+		label = "—"
+		for ev in InputMap.action_get_events(action):
+			label = event_label(ev)
+			break
+	_label_cache[action] = label
+	return label
 
 
 static func event_label(ev: InputEvent) -> String:
 	if ev is InputEventKey:
 		var k := ev as InputEventKey
 		var code := k.physical_keycode if k.physical_keycode != 0 else k.keycode
-		var text := OS.get_keycode_string(DisplayServer.keyboard_get_keycode_from_physical(code) if k.physical_keycode != 0 else code)
-		if text.is_empty():
-			text = OS.get_keycode_string(code)
-		return text
+		# Physical keycodes map through the active layout, but the
+		# headless server can't answer — fall back to the raw code.
+		if k.physical_keycode != 0 and DisplayServer.get_name() != "headless":
+			var mapped := DisplayServer.keyboard_get_keycode_from_physical(code)
+			if mapped != 0:
+				code = mapped
+		return OS.get_keycode_string(code)
 	if ev is InputEventMouseButton:
 		match (ev as InputEventMouseButton).button_index:
 			MOUSE_BUTTON_LEFT: return "Mouse L"
@@ -114,6 +126,7 @@ static func _same_input(a: InputEvent, b: InputEvent) -> bool:
 
 
 static func save_bindings() -> void:
+	_label_cache.clear()
 	var cfg := ConfigFile.new()
 	for entry in BINDABLE_ACTIONS:
 		var action: String = entry[0]
@@ -135,6 +148,7 @@ static func load_bindings() -> void:
 	if _bindings_loaded:
 		return
 	_bindings_loaded = true
+	_label_cache.clear()
 	var cfg := ConfigFile.new()
 	if cfg.load(BINDINGS_PATH) != OK:
 		return

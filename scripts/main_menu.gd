@@ -44,6 +44,7 @@ func _ready() -> void:
 	$UI/Buttons/JoinButton.pressed.connect(_open_lobby.bind("join"))
 	$UI/Buttons/ControlsButton.pressed.connect(func() -> void: _controls_modal.visible = true)
 	$UI/Buttons/QuitButton.pressed.connect(func() -> void: get_tree().quit())
+	_localize_control_labels()
 	$UI/ControlsModal/Center/Panel/VBox/CloseControlsButton.pressed.connect(
 		func() -> void: _controls_modal.visible = false)
 
@@ -255,3 +256,11 @@ func _all_buttons(node: Node) -> Array:
 			found.append(child)
 		found.append_array(_all_buttons(child))
 	return found
+
+
+## The controls list is authored with default keys; rewrite its tokens so
+## it shows whatever the player has actually bound (pause menu rebinds).
+func _localize_control_labels() -> void:
+	for child in $UI/ControlsModal/Center/Panel/VBox.get_children():
+		if child is Label:
+			(child as Label).text = GameSettings.fmt((child as Label).text)

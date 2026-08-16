@@ -760,6 +760,9 @@ func _update_prompt() -> void:
 	var anchor: Node3D = null
 	var height := 1.6
 	var target := get_nearest_interactable()
+	# Mode prompts are live state, not hints — they always show. The
+	# discovery prompts over idle interactables are what the Hints
+	# setting turns off for a clean screen.
 	if _adjusting_mirror and is_instance_valid(_adjusting_mirror):
 		text = "PIVOT — [Mouse] Swivel   [E] Let Go"
 		anchor = _adjusting_mirror
@@ -768,6 +771,8 @@ func _update_prompt() -> void:
 		text = "HAULING — [WASD] Move  [Mouse] Swivel  [E] Let Go"
 		anchor = _pushing_mirror
 		height = _pushing_mirror.prompt_height
+	elif not GameSettings.hints_enabled:
+		pass
 	elif target is Interactable:
 		text = target.get_prompt(self)
 		anchor = target
@@ -1159,6 +1164,10 @@ func pick_up(item: Grabbable) -> void:
 		return
 	inventory.append(item)
 	item.stash(self)
+	# Finding a loose prism is the one puzzle step with no fixture to
+	# read: write it down so [Tab] remembers why you are carrying glass.
+	if item.is_in_group("prisms"):
+		PlayerNotes.add("A laser prism — one of the beam tables is missing its glass.")
 	# Crouch for something off the floor, reach for anything higher.
 	var low := item.global_position.y - global_position.y < 0.5
 	play_action("moves/pick_up_object" if low else "moves/pick_up")
