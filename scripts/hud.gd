@@ -36,6 +36,7 @@ func _ready() -> void:
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("notes"):
 		_notes_panel.visible = not _notes_panel.visible
+		_notes_hint.visible = not _notes_panel.visible
 		if _notes_panel.visible:
 			_refresh_notes()
 		AudioSynthesizer.play_ui("tick", -16.0, 1.1)
@@ -314,6 +315,25 @@ func _build_notes_panel() -> void:
 	_notes_list = VBoxContainer.new()
 	_notes_list.add_theme_constant_override("separation", 4)
 	vbox.add_child(_notes_list)
+
+	# Small standing hint in the same corner while the pad is closed.
+	_notes_hint = Label.new()
+	_notes_hint.text = "[Tab] Notes"
+	_notes_hint.add_theme_font_size_override("font_size", 12)
+	_notes_hint.add_theme_color_override("font_color", Color(0.85, 0.75, 0.5, 0.85))
+	_notes_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.7))
+	_notes_hint.add_theme_constant_override("outline_size", 4)
+	_notes_hint.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_notes_hint.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_notes_hint.offset_left = -120.0
+	_notes_hint.offset_right = -16.0
+	_notes_hint.offset_top = 16.0
+	_notes_hint.offset_bottom = 36.0
+	_notes_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	add_child(_notes_hint)
+
+
+var _notes_hint: Label
 
 
 func _refresh_notes() -> void:
