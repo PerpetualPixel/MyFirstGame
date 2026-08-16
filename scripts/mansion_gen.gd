@@ -1663,13 +1663,102 @@ func _spawn_junk_car(at: Vector3, rust: StandardMaterial3D) -> void:
 	_add_decor_cylinder(at + Vector3(-1.1, 0.08, -1.3), 0.3, 0.14, _iron_material)
 
 
+# --- Imported props (car scene FBX) ---------------------------------------
+# One authored FBX carries the vintage car and a tall vintage lantern.
+# The importer already turns its Z-up nodes Y-up (each part's basis maps
+# local Z to world Y), so instances are used as-is. Its textures are not
+# shipped; every surface is recolored by material name into the estate's
+# palette so the pieces sit with the rest of the art.
+
+const CAR_SCENE := preload("res://assets/props/car_scene.fbx")
+const CAR_PART_NAMES := [
+	"car_body", "door_left", "door_right", "hood", "rear_bumper", "front_bumper", "viper_01",
+	"viper_02", "bottom", "wheel_00", "wheel_01", "wheel_02", "wheel_03", "wheel_004", "wheel_005",
+	"interior_00", "interior_01", "back_door", "lights_00", "lights_01", "lights_02", "lights_03",
+	"lights_04", "lights_05", "railings", "logo_01", "glass_00", "glass_01", "glass_02", "glass_03",
+	"chest_base",
+]
+const LANTERN_PART_NAMES := ["vintage_lantern_7_base"]
+
+var _prop_palette := {}
+
+
+## Palette materials for the FBX surfaces, keyed by the FBX material name.
+func _prop_material(fbx_name: String) -> StandardMaterial3D:
+	if _prop_palette.is_empty():
+		var body := _make_material(Color(0.3, 0.11, 0.13), 0.35, 0.45)     # oxblood coachwork
+		var rubber := _make_material(Color(0.07, 0.07, 0.08), 0.0, 0.95)
+		var glass := StandardMaterial3D.new()
+		glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		glass.albedo_color = Color(0.55, 0.7, 0.85, 0.35)
+		glass.metallic = 0.3
+		glass.roughness = 0.1
+		var interior := _make_material(Color(0.36, 0.23, 0.14), 0.0, 0.8)   # worn leather
+		var chrome := _make_material(Color(0.72, 0.55, 0.25), 0.85, 0.3)     # brass trim
+		var wheels := _make_material(Color(0.16, 0.16, 0.18), 0.4, 0.6)
+		var lights := _make_glow_material(Color(1.0, 0.75, 0.4), 1.6)
+		var chest := _make_material(Color(0.3, 0.2, 0.13), 0.0, 0.7)
+		var lantern_iron := _make_material(Color(0.13, 0.13, 0.16), 0.5, 0.55)
+		var lantern_glass := _make_glow_material(Color(1.0, 0.75, 0.4), 1.8)
+		_prop_palette = {
+			"body": body, "rubber": rubber, "glass": glass, "interior": interior,
+			"chrome": chrome, "wheels": wheels, "lights": lights, "number": chrome,
+			"chest": chest, "shadow": null,
+			"lantern_wall_base_1": lantern_iron, "lantern_wall_base_2": lantern_iron,
+			"lantern_wall_glass_1": lantern_glass,
+		}
+	return _prop_palette.get(fbx_name, _iron_material)
+
+
+## Instance the FBX keeping only the top-level parts in `keep`, recolor
+## every surface, and hand back a Y-up wrapper at `at` with `yaw`/`scale`.
+func _instance_prop(keep: Array, at: Vector3, yaw: float, prop_scale: float) -> Node3D:
+	var wrapper := Node3D.new()
+	wrapper.position = at
+	wrapper.rotation.y = yaw
+	wrapper.scale = Vector3.ONE * prop_scale
+	var inst := CAR_SCENE.instantiate()
+	for child in inst.get_children():
+		if not child.name in keep:
+			inst.remove_child(child)
+			child.free()
+		elif child is Node3D and child.name in LANTERN_PART_NAMES:
+			# The lantern is authored off to the side of the car; stand it
+			# on the wrapper's origin (its base is at its own local zero).
+			(child as Node3D).position = Vector3.ZERO
+	# Recolor (walk the whole kept subtree — lantern parts are nested).
+	var stack: Array = [inst]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node is MeshInstance3D:
+			var mi := node as MeshInstance3D
+			if mi.mesh:
+				for s in mi.mesh.get_surface_count():
+					var src := mi.mesh.surface_get_material(s)
+					var key := src.resource_name if src else ""
+					var mat := _prop_material(key)
+					if mat == null:
+						mi.visible = false
+					else:
+						mi.set_surface_override_material(s, mat)
+		stack.append_array(node.get_children())
+	wrapper.add_child(inst)
+	_generated_root.add_child(wrapper)
+	return wrapper
+
+
+## The vintage motor car on the gravel by the garage, with a body-sized
+## collision box so it is solid to walk around.
 func _spawn_roadster(at: Vector3, yaw: float) -> void:
-	var basis := Basis(Vector3.UP, yaw)
-	_add_prop(at + basis * Vector3(0, 0.7, 0), Vector3(2.6, 0.7, 1.3), _iron_material)
-	_add_decor_box(at + basis * Vector3(-0.6, 1.35, 0), Vector3(1.2, 0.6, 1.2), _shelf_material, yaw)
-	_add_decor_cylinder(at + basis * Vector3(0.9, 0.95, 0), 0.32, 0.8, _lantern_glass_material, true, yaw)
-	for corner in [Vector3(0.9, 0.35, 0.7), Vector3(0.9, 0.35, -0.7), Vector3(-0.9, 0.35, 0.7), Vector3(-0.9, 0.35, -0.7)]:
-		_add_decor_cylinder(at + basis * corner, 0.35, 0.12, _iron_material, true, yaw)
+	var car := _instance_prop(CAR_PART_NAMES, at, yaw, 1.15)
+	var body := StaticBody3D.new()
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(3.3, 1.3, 1.5)
+	col.shape = shape
+	col.position = Vector3(0, 0.75, 0)
+	body.add_child(col)
+	car.add_child(body)
 
 
 func _add_gargoyle(at: Vector3) -> void:
@@ -1769,16 +1858,33 @@ func _add_pine(at: Vector3, autumn: bool, tree_scale := 1.0) -> void:
 	_generated_root.add_child(tree)
 
 
+## Garden lamp post: the FBX's vintage lantern (3.4 m in the source),
+## scaled so the head sits at `post_height` above ground, with a warm
+## flicker in the glass and a solid post you cannot walk through.
 func _add_lantern(at: Vector3, post_height := 1.6) -> void:
-	_add_decor_box(at + Vector3(0, post_height / 2.0, 0), Vector3(0.08, post_height, 0.08), _iron_material)
-	var head_y := post_height + 0.16
-	_add_decor_box(at + Vector3(0, head_y, 0), Vector3(0.22, 0.3, 0.22), _lantern_glass_material)
+	var lantern_scale := (post_height + 0.4) / 3.4
+	var lantern := _instance_prop(LANTERN_PART_NAMES, at, _rng.randf_range(0.0, TAU), lantern_scale)
+	var head_y := post_height + 0.1
 	var light := FlickerLight.new()
 	light.base_energy = 0.85
 	light.light_color = Color(1.0, 0.75, 0.4)
 	light.omni_range = 5.0
 	light.position = at + Vector3(0, head_y, 0)
 	_generated_root.add_child(light)
+	# The post is solid: a slim cylinder the height of the pole.
+	var body := StaticBody3D.new()
+	var col := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.radius = 0.16
+	shape.height = post_height + 0.4
+	col.shape = shape
+	col.position = Vector3(0, (post_height + 0.4) / 2.0, 0)
+	body.add_child(col)
+	body.position = at
+	_generated_root.add_child(body)
+	# The FBX head is offset from the post's own axis; drop a lantern node
+	# reference so callers could align lights later if needed.
+	lantern.name = "Lantern"
 
 
 func _add_decor_cylinder(at: Vector3, radius: float, height: float, material: StandardMaterial3D, lying := false, yaw := 0.0) -> void:
