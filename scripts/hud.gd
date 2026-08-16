@@ -28,6 +28,9 @@ func _ready() -> void:
 	_apply_scale(GameSettings.objectives_scale)
 	_build_notes_panel()
 	_build_inventory_bar()
+	# Start folded: the header stays as a "▶ Objectives" tab in the corner
+	# and the list unfolds on click, so the screen opens uncluttered.
+	_set_collapsed(true, false)
 
 
 func _input(event: InputEvent) -> void:
@@ -48,12 +51,17 @@ func _process(_delta: float) -> void:
 
 
 func _on_toggle_pressed() -> void:
-	_collapsed = not _collapsed
+	_set_collapsed(not _collapsed, true)
+
+
+func _set_collapsed(collapsed: bool, click: bool) -> void:
+	_collapsed = collapsed
 	for child in _objectives.get_children():
 		if child is Label:
 			child.visible = not _collapsed
 	_toggle.text = "▶ Objectives" if _collapsed else "▼ Objectives"
-	AudioSynthesizer.play_ui("tick", -14.0, 1.4)
+	if click:
+		AudioSynthesizer.play_ui("tick", -14.0, 1.4)
 
 
 func _apply_scale(value: float) -> void:
@@ -270,29 +278,41 @@ func _build_notes_panel() -> void:
 	style.border_color = Color(0.55, 0.42, 0.18)
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(6)
-	style.content_margin_left = 18.0
-	style.content_margin_right = 18.0
-	style.content_margin_top = 12.0
-	style.content_margin_bottom = 14.0
+	style.content_margin_left = 12.0
+	style.content_margin_right = 12.0
+	style.content_margin_top = 8.0
+	style.content_margin_bottom = 10.0
 	_notes_panel.add_theme_stylebox_override("panel", style)
-	_notes_panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
-	_notes_panel.offset_left = -420.0
-	_notes_panel.offset_right = -24.0
-	_notes_panel.offset_top = -160.0
-	_notes_panel.offset_bottom = 160.0
+	# A small notepad tucked into the top-right corner; it grows downward
+	# only as far as its entries need.
+	_notes_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_notes_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_notes_panel.grow_vertical = Control.GROW_DIRECTION_END
+	_notes_panel.offset_left = -300.0
+	_notes_panel.offset_right = -16.0
+	_notes_panel.offset_top = 16.0
+	_notes_panel.offset_bottom = 60.0
 	_notes_panel.visible = false
 	add_child(_notes_panel)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
+	vbox.add_theme_constant_override("separation", 5)
 	_notes_panel.add_child(vbox)
+	var header := HBoxContainer.new()
+	vbox.add_child(header)
 	var title := Label.new()
-	title.text = "Notes                                    [Tab] close"
-	title.add_theme_font_size_override("font_size", 22)
+	title.text = "Notes"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 15)
 	title.add_theme_color_override("font_color", Color(0.9, 0.78, 0.5))
-	vbox.add_child(title)
+	header.add_child(title)
+	var close_hint := Label.new()
+	close_hint.text = "[Tab] close"
+	close_hint.add_theme_font_size_override("font_size", 11)
+	close_hint.add_theme_color_override("font_color", Color(0.65, 0.58, 0.45))
+	header.add_child(close_hint)
 	_notes_list = VBoxContainer.new()
-	_notes_list.add_theme_constant_override("separation", 6)
+	_notes_list.add_theme_constant_override("separation", 4)
 	vbox.add_child(_notes_list)
 
 
@@ -302,7 +322,7 @@ func _refresh_notes() -> void:
 	if PlayerNotes.entries.is_empty():
 		var empty := Label.new()
 		empty.text = "Nothing written down yet."
-		empty.add_theme_font_size_override("font_size", 16)
+		empty.add_theme_font_size_override("font_size", 12)
 		empty.add_theme_color_override("font_color", Color(0.7, 0.65, 0.55))
 		_notes_list.add_child(empty)
 		return
@@ -310,6 +330,6 @@ func _refresh_notes() -> void:
 		var note := Label.new()
 		note.text = "• " + entry
 		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		note.add_theme_font_size_override("font_size", 16)
+		note.add_theme_font_size_override("font_size", 12)
 		note.add_theme_color_override("font_color", Color(0.88, 0.84, 0.72))
 		_notes_list.add_child(note)
