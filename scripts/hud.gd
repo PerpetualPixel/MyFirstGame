@@ -84,6 +84,7 @@ const ITEM_ICONS := {
 	"clock_gears": "res://assets/ui/GearIcon.svg",
 	"will_items": "res://assets/ui/WillIcon.svg",
 	"batteries": "res://assets/ui/BatteryIcon.svg",
+	"prisms": "res://assets/ui/PrismIcon.svg",
 }
 var _icon_cache := {}
 var _carry_panel: PanelContainer

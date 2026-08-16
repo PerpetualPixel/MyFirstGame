@@ -47,7 +47,7 @@ func _run() -> void:
 	var player: Player = main.get_node("Players/1")
 	var gm: GameManager = main.get_node("GameManager")
 	var pause_menu: PauseMenu = main.get_node("PauseMenu")
-	var mirrors := _find_all(main, "RotatingMirror")
+	var mirrors := _find_all(main, "PrismTable")
 	var machines := _find_all(main, "PressurePuzzleManager")
 	var gates := _find_all(main, "HydraulicDoor")
 	var vault_doors := _find_all(main, "VaultDoor")
@@ -241,7 +241,7 @@ func _run() -> void:
 		route_mirrors.append(_mirror_named(mirrors, "Mirror_%d" % i))
 	var hauled_count := 0
 	for i in route_mirrors.size():
-		var m: RotatingMirror = route_mirrors[i]
+		var m: PrismTable = route_mirrors[i]
 		var target: Vector3 = route["mirrors"][i]
 		if m.pushable:
 			hauled_count += 1
@@ -264,7 +264,7 @@ func _run() -> void:
 	# Swivel is refused until a hauled mirror is seated; hauling it to its
 	# ring seats it (snap), after which it swivels like any other.
 	for i in route_mirrors.size():
-		var m: RotatingMirror = route_mirrors[i]
+		var m: PrismTable = route_mirrors[i]
 		if not m.pushable:
 			continue
 		var target: Vector3 = route["mirrors"][i]
@@ -603,8 +603,8 @@ func _run() -> void:
 		print("TEST FAIL: carried battery is not riding the hold point")
 		quit(1)
 		return
-	# Carrying it slows the player to a crawl (25% speed): walk a second on
-	# the spot and check the top speed reached.
+	# Carrying it halves the player's speed: walk a second on the spot and
+	# check the top speed reached.
 	var carry_top := 0.0
 	Input.action_press("move_up")
 	for i in 60:
@@ -646,19 +646,74 @@ func _run() -> void:
 		quit(1)
 		return
 	print("battery carry + install powers the laser OK")
-	# Align this run's route to its published solution angles.
+
+	# --- Prisms: at least one table's prism is loose in the house ---
+	var safes := _find_all(main, "LaserSafe")
+	if safes.size() != 1:
+		print("TEST FAIL: expected one wall safe, found %d" % safes.size())
+		quit(1)
+		return
+	var safe: LaserSafe = safes[0]
+	var empty_tables: Array = []
+	for i in route["mirrors"].size():
+		var t: PrismTable = _mirror_near(mirrors, route["mirrors"][i])
+		if t.prism == null:
+			empty_tables.append(t)
+	if empty_tables.is_empty():
+		print("TEST FAIL: no table is missing its prism")
+		quit(1)
+		return
+	var loose_prisms: Array = []
+	for p in get_nodes_in_group("prisms"):
+		if p.holder == null and not (p.get_parent() is PrismTable):
+			loose_prisms.append(p)
+	if loose_prisms.size() < empty_tables.size():
+		print("TEST FAIL: %d empty tables but only %d loose prisms" % [empty_tables.size(), loose_prisms.size()])
+		quit(1)
+		return
+	# Beam cannot solve while a table is empty: align now, expect no crack.
 	for i in route["mirrors"].size():
 		_mirror_near(mirrors, route["mirrors"][i]).rotation.y = deg_to_rad(route["solutions"][i])
+	for i in 60:
+		await physics_frame
+	if safe.cracked:
+		print("TEST FAIL: safe cracked with an empty prism table on the route")
+		quit(1)
+		return
+	# Fetch each loose prism (pack item) and set it on an empty table.
+	for k in empty_tables.size():
+		var loose: Grabbable = loose_prisms[k]
+		var table: PrismTable = empty_tables[k]
+		player.teleport(loose.global_position + Vector3(0, 0, 1.0))
+		for i in 10:
+			await physics_frame
+		player.pick_up(loose)
+		if player.inventory_find("prisms") == null:
+			print("TEST FAIL: could not pack the loose prism")
+			quit(1)
+			return
+		table.request_seat_prism(player)
+		if table.prism != loose or player.inventory.has(loose):
+			print("TEST FAIL: prism did not seat on the empty table")
+			quit(1)
+			return
+	print("misplaced prism found and seated OK")
+
+	# --- Aligned route cracks the wall safe; the lever opens the gate ---
+	# Step out of the beam's way first (the porch end of the foyer is off
+	# every route).
+	player.teleport(Vector3(0, 0.1, 13.5))
 	for i in 90:
 		await physics_frame
-	if not gm._light_done:
-		print("TEST FAIL: laser maze not solved at 45-degree alignment")
+	if not safe.cracked:
+		print("TEST FAIL: laser maze did not crack the safe at the solution angles")
 		# Diagnose: trace each expected beam segment and report the first
 		# collider it strikes.
 		var space := player.get_world_3d().direct_space_state
 		var trace_points: Array[Vector3] = [emitter.get_node("Muzzle").global_position]
 		for m_pos in route["mirrors"]:
 			trace_points.append(m_pos + Vector3(0, 1.2, 0))
+		trace_points.append(route["safe"] + Vector3(0, 1.2, 0))
 		for i in trace_points.size() - 1:
 			var q := PhysicsRayQueryParameters3D.create(trace_points[i], trace_points[i + 1])
 			var hit := space.intersect_ray(q)
@@ -668,6 +723,19 @@ func _run() -> void:
 			print("  segment %d: %s -> %s : %s" % [i, trace_points[i], trace_points[i + 1], label])
 		quit(1)
 		return
+	if gm._light_done:
+		print("TEST FAIL: light objective completed before the lever was pulled")
+		quit(1)
+		return
+	# Before cracking, [E] would have opened the note close-up; now it
+	# throws the lever.
+	safe.interact(player)
+	await process_frame
+	if not safe.lever_pulled or not gm._light_done:
+		print("TEST FAIL: pulling the lever did not complete the light puzzle")
+		quit(1)
+		return
+	print("wall safe cracked + lever pulled OK")
 
 	# Light + hydraulics both done: the vault gate must stand open.
 	for i in 120:
@@ -709,14 +777,14 @@ func _press_escape() -> void:
 	Input.parse_input_event(ev)
 
 
-func _mirror_named(mirrors: Array, node_name: String) -> RotatingMirror:
+func _mirror_named(mirrors: Array, node_name: String) -> PrismTable:
 	for m in mirrors:
 		if m.name == node_name:
 			return m
 	return null
 
 
-func _mirror_near(mirrors: Array, pos: Vector3) -> RotatingMirror:
+func _mirror_near(mirrors: Array, pos: Vector3) -> PrismTable:
 	for m in mirrors:
 		if m.global_position.distance_to(pos) < 1.0:
 			return m

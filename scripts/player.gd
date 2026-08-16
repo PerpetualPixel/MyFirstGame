@@ -33,12 +33,12 @@ var _walk_anim := ""
 var _action_anim := ""
 var _visual_base_pos := Vector3.ZERO
 var _gait_phase := 0.0
-var _adjusting_mirror: RotatingMirror = null
+var _adjusting_mirror: PrismTable = null
 var _mirror_sync_accum := 0.0
 ## Mirror hauling: the grabbed mirror rides at a fixed world-space offset
 ## from the player (walk toward it = push, away = drag), streamed to
 ## peers at 10 Hz. Cleared when released or when the mirror seats.
-var _pushing_mirror: RotatingMirror = null
+var _pushing_mirror: PrismTable = null
 var _push_offset := Vector3.ZERO
 var _push_sync_accum := 0.0
 ## Hauling a full-height mirror is slow work.
@@ -110,7 +110,7 @@ var inventory: Array[Grabbable] = []
 ## Two-hand load held out in front (the Heavy Battery) — separate from
 ## the pack, one at a time, and it slows the carrier to a crawl.
 var carried_item: Grabbable = null
-@export var carry_speed_factor: float = 0.25
+@export var carry_speed_factor: float = 0.5
 ## drop_at() index meaning "the carried load", not a pack slot.
 const CARRY_SLOT := -2
 ## HUD slot highlighted via the 1/2/3 keys; [G] drops it (else the
@@ -764,11 +764,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	# [G] is the dedicated drop key, so tools are never dropped by accident.
 	if event.is_action_pressed("interact"):
 		var target := get_nearest_interactable()
-		if target is RotatingMirror:
-			var mirror := target as RotatingMirror
+		if target is PrismTable:
+			var mirror := target as PrismTable
 			if carried_item != null:
 				# Both hands are under the battery.
 				AudioSynthesizer.play_at("tick", global_position, -12.0, 0.6)
+			elif mirror.wants_prism_from(self):
+				# Empty socket + prism in the pack: seat it (replicated).
+				mirror.request_seat_prism(self)
+				play_action("moves/pick_up")
 			elif mirror.pushable and not mirror.seated:
 				# Unseated pushable: take hold and haul it to its ring (no
 				# grip step: the mirror rides the grip offset every frame,
@@ -813,7 +817,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Take hold of a pushable mirror. The grip offset is wherever the mirror
 ## stands relative to the player right now, clamped so the two bodies
 ## never overlap; from here on it rides that offset in WORLD space.
-func start_pushing(mirror: RotatingMirror) -> bool:
+func start_pushing(mirror: PrismTable) -> bool:
 	if _pushing_mirror != null or carried_item != null or not mirror.begin_push(self):
 		return false
 	_pushing_mirror = mirror
@@ -909,7 +913,7 @@ func _set_camera_yaw(yaw: float) -> void:
 ## Slide the character to a grip spot `dist` behind the mirror (on the
 ## side the player approached from) facing it, so the model visibly
 ## takes hold of the frame's back. Physics still resolves overlaps.
-func _step_to_grip(mirror: RotatingMirror, dist: float) -> void:
+func _step_to_grip(mirror: PrismTable, dist: float) -> void:
 	var away := global_position - mirror.global_position
 	away.y = 0.0
 	if away.length() < 0.05:

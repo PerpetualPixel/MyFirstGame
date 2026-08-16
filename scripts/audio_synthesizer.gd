@@ -89,7 +89,7 @@ static func play_at(sound: String, pos: Vector3, volume_db := 0.0, pitch := 1.0,
 	instance.add_child(p)
 	p.global_position = pos
 	p.play()
-	p.finished.connect(p.queue_free)
+	_free_when_done(p, p.stream)
 
 
 ## Non-positional UI one-shot; keeps playing while the tree is paused
@@ -104,7 +104,18 @@ static func play_ui(sound: String, volume_db := 0.0, pitch := 1.0) -> void:
 	p.process_mode = Node.PROCESS_MODE_ALWAYS
 	instance.add_child(p)
 	p.play()
-	p.finished.connect(p.queue_free)
+	_free_when_done(p, p.stream)
+
+
+## One-shots free themselves when the sample ends. A LOOPING sample
+## (steam, hums) never fires `finished`, so it would hiss forever — those
+## get one pass and are cut after the sample's length.
+static func _free_when_done(p: Node, stream: AudioStream) -> void:
+	var looping := stream is AudioStreamWAV and (stream as AudioStreamWAV).loop_mode != AudioStreamWAV.LOOP_DISABLED
+	if looping:
+		instance.get_tree().create_timer(stream.get_length(), true).timeout.connect(p.queue_free)
+	else:
+		p.finished.connect(p.queue_free)
 
 
 ## Looping non-positional ambience (e.g. the menu's wind bed).

@@ -19,8 +19,8 @@ const VAULT_STUDY_CELL := Vector2i(1, 0)
 const PARLOR_CELL := Vector2i(2, 0)         ## Fireplace parlor.
 
 const LIGHT_EMITTER_SCENE := preload("res://scenes/Puzzles/LightEmitter.tscn")
-const ROTATING_MIRROR_SCENE := preload("res://scenes/Puzzles/RotatingMirror.tscn")
-const LIGHT_RECEIVER_SCENE := preload("res://scenes/Puzzles/LightReceiver.tscn")
+const ROTATING_MIRROR_SCENE := preload("res://scenes/Puzzles/PrismTable.tscn")
+const LASER_SAFE_SCRIPT := preload("res://scripts/puzzles/laser_safe.gd")
 const SMALL_WRENCH_SCENE := preload("res://scenes/SmallWrench.tscn")
 const PRESSURE_MACHINE_SCRIPT := preload("res://scripts/puzzles/pressure_puzzle_manager.gd")
 const BREAKER_BOX_SCENE := preload("res://scenes/Puzzles/BreakerBox.tscn")
@@ -38,6 +38,7 @@ const NOTEBOOK_SCENE := preload("res://scenes/NotebookPickup.tscn")
 const GARAGE_BUTTON_SCRIPT := preload("res://scripts/puzzles/garage_door_button.gd")
 const CLOCKWORK_SCENE := preload("res://scenes/Puzzles/ClockworkMechanism.tscn")
 const BRASS_GEAR_SCENE := preload("res://scenes/BrassGear.tscn")
+const PRISM_SCENE := preload("res://scenes/Prism.tscn")
 
 ## Three hand-authored, guaranteed-solvable laser routes; one is drawn per
 ## run. EVERY mirror stands in a room corner (CORNER_INSET from both
@@ -49,47 +50,50 @@ const BRASS_GEAR_SCENE := preload("res://scenes/BrassGear.tscn")
 ## solved yaw lands on a 15-degree detent (computed at run time by
 ## _route_solutions, never hand-typed). Doorways on the beam route are
 ## open archways: a hinged panel swung the wrong way would clip the
-## diagonal. All routes end through the vault gate's slit onto a
-## receiver in a vault corner. Every turn is at least 60 degrees: a
-## shallow (30-degree) turn means a 15-degree grazing hit whose usable
-## panel width is a hand-span, and bounce-to-bounce hit-point drift can
-## walk the beam right off it.
+## diagonal. All routes end on the WALL SAFE hanging beside the vault
+## doorway on the parlor's north wall (x = +-2.2, beam height): the last
+## prism sits in the parlor corner on the far side of the door and fires
+## back across at 60 degrees off the wall onto the safe's face. Every
+## turn is at least 60 degrees: a shallow (30-degree) turn means a
+## 15-degree grazing hit whose usable face is a hand-span, and bounce-to-
+## bounce hit-point drift can walk the beam right off it.
 const CORNER_INSET := 1.83
 const ROUTE_VARIANTS := [
 	{
-		# Emitter in the SW room's SW corner fires north up the west outer
-		# wall; the beam zig-zags up the west wing, hops the archway into
-		# the parlor, climbs its west wall, and cuts through the vault gate.
+		# Emitter in the SW room's NW corner fires through the archway into
+		# the west wing room; the beam climbs that room's east wall, hops
+		# into the parlor, climbs its west wall, runs the vault wall, and
+		# comes back down onto the safe right of the door.
 		"name": "west_wing",
-		"emitter": Vector3(-13.17, 0, 13.17),
-		"emitter_yaw": 0.0,
+		"emitter": Vector3(-13.17, 0, 6.83),
+		"emitter_yaw": -60.0,
 		"maze_cell": Vector2i(0, 1),
-		"mirrors": [Vector3(-13.17, 0, 6.83), Vector3(-6.83, 0, 3.17), Vector3(-6.83, 0, -3.17), Vector3(-3.17, 0, 3.17), Vector3(-3.17, 0, -3.17)],
-		"receiver": Vector3(3.17, 0, -6.83),
+		"mirrors": [Vector3(-6.83, 0, 3.17), Vector3(-6.83, 0, -3.17), Vector3(-3.17, 0, 3.17), Vector3(-3.17, 0, -3.17), Vector3(3.17, 0, -3.17)],
+		"safe": Vector3(2.2, 0, -4.85),
 		"doors": [[Vector2i(0, 2), Vector2i(0, 1)], [Vector2i(0, 1), Vector2i(1, 1)]],
 	},
 	{
-		# Mirror image up the east wing.
+		# Mirror image up the east wing, ending on the safe left of the door.
 		"name": "east_wing",
-		"emitter": Vector3(13.17, 0, 13.17),
-		"emitter_yaw": 0.0,
+		"emitter": Vector3(13.17, 0, 6.83),
+		"emitter_yaw": 60.0,
 		"maze_cell": Vector2i(2, 1),
-		"mirrors": [Vector3(13.17, 0, 6.83), Vector3(6.83, 0, 3.17), Vector3(6.83, 0, -3.17), Vector3(3.17, 0, 3.17), Vector3(3.17, 0, -3.17)],
-		"receiver": Vector3(-3.17, 0, -6.83),
+		"mirrors": [Vector3(6.83, 0, 3.17), Vector3(6.83, 0, -3.17), Vector3(3.17, 0, 3.17), Vector3(3.17, 0, -3.17), Vector3(-3.17, 0, -3.17)],
+		"safe": Vector3(-2.2, 0, -4.85),
 		"doors": [[Vector2i(2, 2), Vector2i(2, 1)], [Vector2i(2, 1), Vector2i(1, 1)]],
 	},
 	{
 		# Emitter in the foyer's NW corner fires east along the parlor
 		# wall; the beam dives through the parlor archway and rings all
-		# four parlor corners before the vault gate. The parlor's east
-		# doorway is an archway too so no swung panel can cut the leg
-		# along that wall.
+		# four parlor corners before dropping onto the safe left of the
+		# door. The parlor's east doorway is an archway too so no swung
+		# panel can cut the leg along that wall.
 		"name": "parlor_ring",
 		"emitter": Vector3(-3.17, 0, 6.83),
 		"emitter_yaw": -90.0,
 		"maze_cell": Vector2i(1, 1),
 		"mirrors": [Vector3(3.17, 0, 6.83), Vector3(-3.17, 0, 3.17), Vector3(3.17, 0, 3.17), Vector3(3.17, 0, -3.17), Vector3(-3.17, 0, -3.17)],
-		"receiver": Vector3(3.17, 0, -6.83),
+		"safe": Vector3(-2.2, 0, -4.85),
 		"doors": [[Vector2i(1, 2), Vector2i(1, 1)], [Vector2i(1, 1), Vector2i(2, 1)]],
 	},
 ]
@@ -285,7 +289,7 @@ func _pick_run_layout() -> void:
 ## normal must bisect the incoming and outgoing legs. With every leg on
 ## the 30-degree grid the results land on 15-degree detents (asserted).
 static func _route_solutions(route: Dictionary) -> Array:
-	var pts: Array = [route["emitter"]] + (route["mirrors"] as Array) + [route["receiver"]]
+	var pts: Array = [route["emitter"]] + (route["mirrors"] as Array) + [route["safe"]]
 	var solutions: Array = []
 	for i in (route["mirrors"] as Array).size():
 		var a: Vector3 = pts[i]
@@ -307,7 +311,7 @@ static func _route_solutions(route: Dictionary) -> Array:
 ## route's solved beam path (emitter -> mirrors -> receiver, ground plane).
 func _near_beam_path(point: Vector3) -> bool:
 	var flat := Vector3(point.x, 0, point.z)
-	var pts: Array = [active_route["emitter"]] + (active_route["mirrors"] as Array) + [active_route["receiver"]]
+	var pts: Array = [active_route["emitter"]] + (active_route["mirrors"] as Array) + [active_route["safe"]]
 	for i in pts.size() - 1:
 		var a: Vector3 = pts[i]
 		var b: Vector3 = pts[i + 1]
@@ -545,19 +549,23 @@ func _spawn_puzzle() -> void:
 
 	# World spots the mirrors' wall placement must keep clear of (the
 	# clock, press, cage, and gears are appended as they spawn below).
-	var reserved: Array[Vector3] = [active_route["emitter"], active_route["receiver"]]
+	var reserved: Array[Vector3] = [active_route["emitter"], active_route["safe"]]
 
-	var receiver := LIGHT_RECEIVER_SCENE.instantiate() as Node3D
-	receiver.name = "Receiver"
-	receiver.position = active_route["receiver"]
-	_generated_root.add_child(receiver)
-	receiver.puzzle_completed.connect(func() -> void: puzzle_solved.emit())
+	# The wall safe beside the vault doorway is the beam's target: the
+	# laser cracks it, the lever inside opens the gate. Untyped so the
+	# script-added properties resolve post-set_script.
+	var safe = StaticBody3D.new()
+	safe.name = "WallSafe"
+	safe.set_script(LASER_SAFE_SCRIPT)
+	safe.position = active_route["safe"]
+	_generated_root.add_child(safe)
+	safe.puzzle_completed.connect(func() -> void: puzzle_solved.emit())
 
 	var door := VAULT_DOOR_SCENE.instantiate() as VaultDoor
 	door.name = "VaultGate"
 	door.position = (get_room_center(Vector2i(1, 1)) + get_room_center(VAULT_STUDY_CELL)) / 2.0
 	_generated_root.add_child(door)
-	receiver.puzzle_completed.connect(door.on_light_puzzle_completed)
+	safe.puzzle_completed.connect(door.on_light_puzzle_completed)
 
 	# Hydraulic press console in its own dedicated machinery room; [E]
 	# opens the fullscreen control-panel minigame. Counts, PSI values, and
@@ -686,9 +694,20 @@ func _spawn_mirrors(reserved: Array[Vector3]) -> void:
 		if not hauled.has(false):
 			hauled[_rng.randi_range(0, hauled.size() - 1)] = false
 
+	# At least one route table's prism is MISPLACED: it spawns loose
+	# somewhere else in the house and must be found and set on the table.
+	var missing_count := 1 + (1 if mirror_spots.size() >= 5 and _rng.randf() < 0.4 else 0)
+	var missing: Array[int] = []
+	while missing.size() < missing_count:
+		var idx := _rng.randi_range(0, mirror_spots.size() - 1)
+		if not idx in missing:
+			missing.append(idx)
+
+	var tables: Array = []
+	var any_hauled := false
 	for i in mirror_spots.size():
 		var target: Vector3 = mirror_spots[i]
-		var mirror := ROTATING_MIRROR_SCENE.instantiate() as RotatingMirror
+		var mirror := ROTATING_MIRROR_SCENE.instantiate() as PrismTable
 		mirror.name = "Mirror_%d" % i
 		mirror.rotation.y = deg_to_rad(15.0 * float(_rng.randi_range(0, 23)))
 		var parked: Array = _pick_perimeter_spot(_cell_of(target), reserved, targets) if hauled[i] else []
@@ -700,11 +719,31 @@ func _spawn_mirrors(reserved: Array[Vector3]) -> void:
 			mirror.position = parked[0]
 			reserved.append(parked[0])
 			_mirror_parking.append(parked[0])
+			any_hauled = true
 		_generated_root.add_child(mirror)
+		tables.append(mirror)
+		if i in missing:
+			_scatter_prism("Prism_%d" % i, reserved)
+		else:
+			_seat_new_prism(mirror, "Prism_%d" % i)
+	# The seeded pick may have landed only on tables whose room has no
+	# free wall spot (a beam that rings every wall leaves none). Keep the
+	# "at least one hauled table" promise with the first that CAN park.
+	if not any_hauled and mirror_spots.size() > 1:
+		for i in mirror_spots.size():
+			var target: Vector3 = mirror_spots[i]
+			var parked: Array = _pick_perimeter_spot(_cell_of(target), reserved, targets)
+			if parked.is_empty():
+				continue
+			var table: PrismTable = tables[i]
+			table.convert_to_pushable(target, parked[0])
+			reserved.append(parked[0])
+			_mirror_parking.append(parked[0])
+			break
 
 	# Free-roaming: haulable anywhere with no ring, so it looks exactly
-	# like a route mirror someone forgot to place.
-	var decoy := ROTATING_MIRROR_SCENE.instantiate() as RotatingMirror
+	# like a route table someone forgot to place. Comes with its prism.
+	var decoy := ROTATING_MIRROR_SCENE.instantiate() as PrismTable
 	decoy.name = "Mirror_Decoy"
 	decoy.make_free()
 	var decoy_spot: Array = _pick_perimeter_spot(_decoy_cell, reserved, targets)
@@ -712,6 +751,47 @@ func _spawn_mirrors(reserved: Array[Vector3]) -> void:
 	_mirror_parking.append(decoy.position)
 	decoy.rotation.y = deg_to_rad(15.0 * float(_rng.randi_range(0, 23)))
 	_generated_root.add_child(decoy)
+	_seat_new_prism(decoy, "Prism_Decoy")
+
+
+## Spawn a prism already seated on `table` (deterministic name for RPCs).
+func _seat_new_prism(table: PrismTable, node_name: String) -> void:
+	var prism := PRISM_SCENE.instantiate() as Grabbable
+	prism.name = node_name
+	_generated_root.add_child(prism)
+	table.seat_prism(prism)
+
+
+## Loose prism spot: a seeded room (never the vault), on the floor beside
+## the south door's far jamb — clear of the swing, the corner tables, the
+## wall pieces, and anything reserved.
+func _scatter_prism(node_name: String, reserved: Array[Vector3]) -> void:
+	var options: Array[Vector2i] = []
+	for z in GRID_SIZE.y:
+		for x in GRID_SIZE.x:
+			var cell := Vector2i(x, z)
+			if cell != VAULT_STUDY_CELL and not cell in _valve_cells:
+				options.append(cell)
+	var at := Vector3.ZERO
+	for attempt in 12:
+		var cell: Vector2i = options[_rng.randi_range(0, options.size() - 1)]
+		var candidate := get_room_center(cell) + Vector3(1.5, 0.15, 3.55)
+		var clear := true
+		for r in reserved:
+			if Vector2(candidate.x - r.x, candidate.z - r.z).length() < 1.4:
+				clear = false
+				break
+		if clear:
+			at = candidate
+			break
+	if at == Vector3.ZERO:
+		at = get_room_center(FOYER_CELL) + Vector3(1.5, 0.15, 3.55)
+	var prism := PRISM_SCENE.instantiate() as Grabbable
+	prism.name = node_name
+	prism.position = at
+	prism.rotation.y = _rng.randf_range(0.0, TAU)
+	_generated_root.add_child(prism)
+	reserved.append(at)
 
 
 ## A seeded free wall spot in `cell`: off the beam path and at least
@@ -925,6 +1005,10 @@ func _spawn_props() -> void:
 		blocked.append(press_room + Vector3(4.6, 0, -2.2))        # gate approach
 	blocked.append(get_room_center(FOYER_CELL) + Vector3(2.4, 0, 4.6))  # keypad approach
 	blocked.append(get_room_center(VAULT_STUDY_CELL))                   # will pedestal
+	# The wall safe hangs on one of the parlor's north flank slots; keep
+	# both clear so it and its beam approach stay unobstructed.
+	blocked.append(Vector3(-2.2, 0, -4.85))
+	blocked.append(Vector3(2.2, 0, -4.85))
 
 	for z in GRID_SIZE.y:
 		for x in GRID_SIZE.x:

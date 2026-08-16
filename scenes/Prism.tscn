@@ -1,0 +1,34 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/grabbable.gd" id="1_grabbable"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_glass"]
+transparency = 1
+albedo_color = Color(0.7, 0.9, 1.0, 0.6)
+metallic = 0.4
+roughness = 0.03
+emission_enabled = true
+emission = Color(0.35, 0.8, 1.0, 1)
+emission_energy_multiplier = 0.3
+
+[sub_resource type="PrismMesh" id="PrismMesh_prism"]
+material = SubResource("StandardMaterial3D_glass")
+left_to_right = 0.0
+size = Vector3(0.3, 0.3, 0.3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_prism"]
+size = Vector3(0.32, 0.32, 0.32)
+
+[node name="Prism" type="RigidBody3D" groups=["prisms"]]
+script = ExtResource("1_grabbable")
+display_name = "Laser Prism"
+sound_material = "ceramic"
+prompt_height = 0.6
+
+[node name="Glass" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.16, 0)
+mesh = SubResource("PrismMesh_prism")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.16, 0)
+shape = SubResource("BoxShape3D_prism")
