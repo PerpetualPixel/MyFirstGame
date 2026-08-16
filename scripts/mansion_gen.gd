@@ -226,8 +226,10 @@ func get_room_center(cell: Vector2i) -> Vector3:
 	return Vector3((cell.x - 1) * room_size, 0.0, (cell.y - 1) * room_size)
 
 
+## The run opens on the cobble walkway just inside the estate gate, the
+## mansion up the path ahead (co-op partners spawn a step apart).
 func get_spawn_position() -> Vector3:
-	return get_room_center(FOYER_CELL) + Vector3(0.0, 0.1, room_size * 0.8)
+	return Vector3(0.0, 0.1, 31.0)
 
 
 ## Draw this run's structural layout from the seeded rng: laser route,
