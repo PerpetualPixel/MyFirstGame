@@ -489,7 +489,9 @@ static func surface_at(p: Vector3) -> String:
 	if absf(p.x) <= 1.3 and p.z >= 25.4 and p.z <= 33.2:
 		return "stone"      # cobble walkway to the gate
 	if p.x >= 6.75 and p.x <= 12.25 and p.z >= 24.25 and p.z <= 32.75:
-		return "gravel"     # driveway
+		return "gravel"     # roadster pad
+	if absf(p.x) <= 2.3 and p.z >= 33.2 and p.z <= 51.2:
+		return "gravel"     # driveway out to the lane
 	if p.x >= 18.8 and p.x <= 26.2 and p.z >= 17.3 and p.z <= 23.7:
 		return "stone"      # garage slab
 	if p.x >= 15.1 and p.x <= 19.5 and p.z >= 19.3 and p.z <= 21.7:

@@ -388,7 +388,8 @@ func _build_geometry() -> void:
 
 	# 60x60 estate lawn, slightly below the interior floors.
 	var lawn := CSGBox3D.new()
-	lawn.size = Vector3(60, 0.4, 60)
+	# 100x100 grounds: the fenced yard plus the wooded belt around it.
+	lawn.size = Vector3(100, 0.4, 100)
 	lawn.position = Vector3(0, -0.22, 5)
 	lawn.material = _grass_material
 	csg.add_child(lawn)
@@ -428,6 +429,27 @@ func _build_geometry() -> void:
 	gravel.position = Vector3(9.5, -0.21, 28.5)
 	gravel.material = _gravel_material
 	csg.add_child(gravel)
+
+	# Gravel driveway running from the estate gate out to the lane at the
+	# edge of the woods, with two darker wheel ruts.
+	var drive := CSGBox3D.new()
+	drive.size = Vector3(4.6, 0.36, 18.0)
+	drive.position = Vector3(0, -0.2, 42.2)
+	drive.material = _gravel_material
+	csg.add_child(drive)
+	var rut_material := _make_material(Color(0.24, 0.22, 0.2))
+	for rx in [-1.1, 1.1]:
+		var rut := CSGBox3D.new()
+		rut.size = Vector3(0.5, 0.37, 17.6)
+		rut.position = Vector3(rx, -0.2, 42.2)
+		rut.material = rut_material
+		csg.add_child(rut)
+	# The lane the driveway meets: a packed-dirt road across the south edge.
+	var lane := CSGBox3D.new()
+	lane.size = Vector3(90, 0.35, 5.0)
+	lane.position = Vector3(0, -0.21, 52.5)
+	lane.material = rut_material
+	csg.add_child(lane)
 
 
 func _add_floor(parent: Node3D, cell: Vector2i, center: Vector3) -> void:
@@ -1319,14 +1341,11 @@ func _spawn_estate() -> void:
 	_add_prop(Vector3(22.5, 0.8, 15.3), Vector3(15, 1.6, 1.1), _hedge_material)
 	_add_prop(Vector3(-22.5, 0.8, 15.3), Vector3(15, 1.6, 1.1), _hedge_material)
 
-	var tree_i := 0
-	for tx in range(-28, 29, 4):
-		_add_pine(Vector3(tx, 0, 34.6), tree_i % 3 == 0)
-		tree_i += 1
-	for tz in range(17, 33, 4):
-		_add_pine(Vector3(31.6, 0, tz), tree_i % 3 == 0)
-		_add_pine(Vector3(-31.6, 0, tz), tree_i % 2 == 0)
-		tree_i += 1
+	# Woods all round the estate (see _spawn_woods), lanterns flanking the
+	# gate on the driveway side.
+	_spawn_woods()
+	for lx in [-3.4, 3.4]:
+		_add_lantern(Vector3(lx, 0, 36.5), 2.0)
 
 	# Antique steam roadster on the gravel driveway.
 	_spawn_roadster(Vector3(9.5, 0, 28.5), -0.35)
@@ -1658,28 +1677,91 @@ func _add_gargoyle(at: Vector3) -> void:
 	_add_decor_box(at + Vector3(0.32, 0.5, -0.05), Vector3(0.34, 0.26, 0.06), _stone_material, -0.5)
 
 
-func _add_pine(at: Vector3, autumn: bool) -> void:
+## Dense woods ringing the whole estate: a belt beyond the fence on the
+## south (parted for the driveway and gate), and thick stands down both
+## sides and across the back of the mansion. Every one of those bands is
+## sealed off from play (the yard hedges and the mansion's outer walls),
+## so the trees never cost a path. Seeded jitter and per-tree scale keep
+## it from reading as a grid.
+func _spawn_woods() -> void:
+	var placed := 0
+	# [x0, x1, z0, z1] bands (world).
+	var bands := [
+		[-46.0, 46.0, 35.5, 50.0],    # south, beyond the fence
+		[-46.0, -18.0, -42.0, 34.0],  # west flank and back corner
+		[18.0, 46.0, -42.0, 34.0],    # east flank and back corner
+		[-18.0, 18.0, -42.0, -17.5],  # north, behind the mansion
+	]
+	for band in bands:
+		var z: float = band[2]
+		var row := 0
+		while z <= band[3]:
+			var x: float = band[0] + (2.0 if row % 2 == 1 else 0.0)
+			while x <= band[1]:
+				var jitter := Vector3(_rng.randf_range(-1.3, 1.3), 0, _rng.randf_range(-1.3, 1.3))
+				var p := Vector3(x, 0, z) + jitter
+				if _woods_spot_ok(p) and _rng.randf() < 0.85:
+					_add_pine(p, _rng.randf() < 0.22, _rng.randf_range(0.8, 1.35))
+					placed += 1
+				x += 4.0
+			z += 3.6
+			row += 1
+
+
+## Keep the woods off the driveway and lane, out of the gate's sight
+## line, and clear of the fence line and the yard's own features.
+func _woods_spot_ok(p: Vector3) -> bool:
+	# Driveway + gate approach corridor, and the lane.
+	if absf(p.x) < 4.5 and p.z > 30.0:
+		return false
+	if p.z > 49.5:
+		return false
+	# Not on the fence line itself (z 33 south fence, x +-30 side fences).
+	if absf(p.z - 33.0) < 1.6 and absf(p.x) <= 31.5:
+		return false
+	if absf(absf(p.x) - 30.0) < 1.6 and p.z >= 14.0 and p.z <= 34.5:
+		return false
+	# Never inside the fenced yard or the mansion footprint.
+	if absf(p.x) < 30.0 and p.z > 14.0 and p.z < 33.0:
+		return false
+	if absf(p.x) < 16.5 and p.z > -16.5 and p.z < 16.5:
+		return false
+	return true
+
+
+## Shared pine meshes: a hundred trees must not each own their own.
+var _pine_trunk_mesh: CylinderMesh
+var _pine_layers: Array = []
+var _autumn_layers: Array = []
+
+
+func _add_pine(at: Vector3, autumn: bool, tree_scale := 1.0) -> void:
+	if _pine_trunk_mesh == null:
+		_pine_trunk_mesh = CylinderMesh.new()
+		_pine_trunk_mesh.top_radius = 0.14
+		_pine_trunk_mesh.bottom_radius = 0.2
+		_pine_trunk_mesh.height = 2.2
+		_pine_trunk_mesh.material = _trunk_material
+		for layer in [[2.9, 1.4, 2.4], [4.2, 1.0, 1.8]]:
+			for variant in 2:
+				var cone := CylinderMesh.new()
+				cone.top_radius = 0.0
+				cone.bottom_radius = layer[1]
+				cone.height = layer[2]
+				cone.material = _pine_material if variant == 0 else _autumn_material
+				(_pine_layers if variant == 0 else _autumn_layers).append([layer[0], cone])
 	var tree := SwayProp.new()
 	tree.position = at
+	tree.rotation.y = _rng.randf_range(0.0, TAU)
+	tree.scale = Vector3.ONE * tree_scale
 	tree.amplitude = 0.025
 	var trunk := MeshInstance3D.new()
-	var tcyl := CylinderMesh.new()
-	tcyl.top_radius = 0.14
-	tcyl.bottom_radius = 0.2
-	tcyl.height = 2.2
-	tcyl.material = _trunk_material
-	trunk.mesh = tcyl
+	trunk.mesh = _pine_trunk_mesh
 	trunk.position = Vector3(0, 1.1, 0)
 	tree.add_child(trunk)
-	var mat := _autumn_material if autumn else _pine_material
-	for layer in [[2.9, 1.4, 2.4], [4.2, 1.0, 1.8]]:
+	for layer in (_autumn_layers if autumn else _pine_layers):
 		var foliage := MeshInstance3D.new()
-		var cone := CylinderMesh.new()
-		cone.top_radius = 0.0
-		cone.bottom_radius = layer[1]
-		cone.height = layer[2]
-		cone.material = mat
-		foliage.mesh = cone
+		foliage.mesh = layer[1]
 		foliage.position = Vector3(0, layer[0], 0)
 		tree.add_child(foliage)
 	_generated_root.add_child(tree)
