@@ -15,6 +15,7 @@ var _ready_peers := {}
 
 
 func _ready() -> void:
+	GameSettings.load_bindings()
 	# Stop menu ambience (procedural audio) so it doesn't distract during gameplay
 	_stop_menu_ambience()
 

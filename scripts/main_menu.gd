@@ -30,6 +30,7 @@ var _music_stream: AudioStream
 
 
 func _ready() -> void:
+	GameSettings.load_bindings()
 	# Returning from a lobby or finished run: clear stale network state.
 	NetworkSession.reset()
 	multiplayer.multiplayer_peer = null

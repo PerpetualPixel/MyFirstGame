@@ -198,9 +198,18 @@ const EXTRA_ANIM_SOURCES := {
 	"idle": {"path": "res://assets/sophie/Idle.fbx", "loop": true},
 	"pick_up": {"path": "res://assets/sophie/Picking Up.fbx", "loop": false},
 	"open_door": {"path": "res://assets/sophie/Opening Door Inwards.fbx", "loop": false},
-	# Optional: drop a Mixamo push cycle here and mirror hauling uses it
-	# instead of the procedural lean (missing files are skipped).
-	"push": {"path": "res://assets/sophie/Pushing.fbx", "loop": true},
+	# Hauling a prism table plays a real push cycle.
+	"push": {"path": "res://assets/sophie/Push.fbx", "loop": true},
+	# Two-hand load (the Heavy Battery): lift it, then walk carrying it.
+	"lift": {"path": "res://assets/sophie/Lifting Object.fbx", "loop": false},
+	"carry": {"path": "res://assets/sophie/Carrying.fbx", "loop": true},
+	"carry_turn": {"path": "res://assets/sophie/Carrying Turn.fbx", "loop": true},
+	# Crouched pick-up for floor items.
+	"pick_up_object": {"path": "res://assets/sophie/Picking Up Object.fbx", "loop": false},
+	# Emote wheel.
+	"dance": {"path": "res://assets/sophie/Dancing.fbx", "loop": true},
+	"dance_locking": {"path": "res://assets/sophie/Locking Hip Hop Dance.fbx", "loop": true},
+	"dance_wave": {"path": "res://assets/sophie/Wave Hip Hop Dance.fbx", "loop": true},
 }
 
 
@@ -304,6 +313,10 @@ func _physics_process(delta: float) -> void:
 		_animate_visual(delta)
 		_update_footsteps(delta)
 		return
+
+	# Yaw before this frame's steering, so the carry-turn clip can tell
+	# whether the body is actually swinging round.
+	_last_facing = rotation.y
 
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
@@ -428,8 +441,64 @@ func _update_footsteps(delta: float) -> void:
 		_play_footstep(_step_parity, speed)
 
 
+# --- Emotes --------------------------------------------------------------
+
+## Wheel entries: [animation, label]. Anything registered in
+## EXTRA_ANIM_SOURCES can be emoted; missing clips are filtered out.
+const EMOTES := [
+	["moves/dance", "Dance"],
+	["moves/dance_locking", "Locking"],
+	["moves/dance_wave", "Wave"],
+]
+
+## The emote currently playing on this player (replicated), or "".
+var _emote_anim := ""
+
+
+## Emotes the character actually shipped with.
+func available_emotes() -> Array:
+	var found: Array = []
+	for entry in EMOTES:
+		if _anim_player == null or _anim_player.has_animation(entry[0]):
+			found.append(entry)
+	return found
+
+
+## Start an emote: replicated so partners see the dance too.
+func request_emote(anim_name: String) -> void:
+	if NetworkSession.multiplayer_active:
+		_net_emote.rpc(anim_name)
+	else:
+		play_emote(anim_name)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _net_emote(anim_name: String) -> void:
+	play_emote(anim_name)
+
+
+func play_emote(anim_name: String) -> void:
+	if _anim_player == null or not _anim_player.has_animation(anim_name):
+		return
+	_emote_anim = anim_name
+	_action_anim = ""
+	_anim_player.play(anim_name, 0.25)
+	_anim_player.speed_scale = 1.0
+
+
+func stop_emote() -> void:
+	if _emote_anim.is_empty():
+		return
+	_emote_anim = ""
+	if _anim_player and not _idle_anim.is_empty():
+		_anim_player.play(_idle_anim, 0.2)
+		_anim_player.speed_scale = 1.0
+
+
 ## Running count of footfalls fired (tests read this).
 var footsteps_played := 0
+## Yaw last frame, for choosing the carry-turn clip.
+var _last_facing := 0.0
 var _foot_skeleton: Skeleton3D
 var _foot_bones: Array[int] = []
 var _foot_floor: Array[float] = [INF, INF]
@@ -510,11 +579,21 @@ func _animate_visual(delta: float) -> void:
 	# real push clip registered it drives the legs; otherwise the walk
 	# cycle plays slow and heavy under the lean.
 	var pushing := _pushing_mirror != null
-	var lean := (0.24 + 0.1 * stride) if pushing else 0.0
+	# A real push clip already leans; only the procedural fallback needs it.
+	var lean := (0.24 + 0.1 * stride) if (pushing and not (_anim_player and _anim_player.has_animation("moves/push"))) else 0.0
 	var lean_weight := 1.0 - exp(-8.0 * delta)
 
 	if _anim_player and not _walk_anim.is_empty():
 		_visual.rotation.x = lerpf(_visual.rotation.x, lean, lean_weight)
+		# An emote owns the body until it is cancelled or the player moves.
+		if not _emote_anim.is_empty():
+			if speed > 0.3:
+				stop_emote()
+			else:
+				if _anim_player.current_animation != _emote_anim or not _anim_player.is_playing():
+					_anim_player.play(_emote_anim, 0.25)
+					_anim_player.speed_scale = 1.0
+				return
 		# Hands on a mirror (pivoting, or hauling while standing still) or
 		# under a carried load holds the reach pose. Walking releases it
 		# into the gait — slow and heavy under the battery.
@@ -535,6 +614,14 @@ func _animate_visual(delta: float) -> void:
 			var gait := _walk_anim
 			if pushing and _anim_player.has_animation("moves/push"):
 				gait = "moves/push"
+			elif carrying:
+				# Load in both hands: the carry walk, or its turning
+				# variant while the body is swinging round.
+				var turning := absf(wrapf(rotation.y - _last_facing, -PI, PI)) > 0.05
+				if turning and _anim_player.has_animation("moves/carry_turn"):
+					gait = "moves/carry_turn"
+				elif _anim_player.has_animation("moves/carry"):
+					gait = "moves/carry"
 			if _anim_player.current_animation != gait or not _anim_player.is_playing():
 				_anim_player.play(gait, 0.25)
 			# Foot cadence follows actual movement speed (heavy when hauling
@@ -691,6 +778,9 @@ func _update_prompt() -> void:
 	# No floating drop hint — the HUD's pack slots already show what's
 	# carried, and [G] quietly drops the newest item. Silent
 	# interactables (empty prompt, e.g. mirrors) show nothing at all.
+	# Prompts name the player's own keys, not the defaults.
+	if not text.is_empty():
+		text = GameSettings.fmt(text)
 	if anchor and not text.is_empty():
 		if _prompt.text != text:
 			_prompt.text = text  # Label3D rebuilds its mesh on text set
@@ -731,6 +821,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_finish_mirror_adjust()
 			get_viewport().set_input_as_handled()
 		return
+
+	# Any movement or interaction cancels a running emote.
+	if not _emote_anim.is_empty() and (event.is_action_pressed("interact") \
+			or event.is_action_pressed("ui_cancel") or event.is_action_pressed("drop")):
+		stop_emote()
 
 	# [Q]: swing the isometric camera a quarter turn — the scene rotates
 	# 90 degrees clockwise on screen. Movement input is camera-relative
@@ -1058,13 +1153,15 @@ func pick_up(item: Grabbable) -> void:
 			return
 		carried_item = item
 		item.carry(self)
-		play_action("moves/pick_up")
+		play_action("moves/lift")
 		return
 	if inventory.has(item) or inventory.size() >= INVENTORY_SIZE:
 		return
 	inventory.append(item)
 	item.stash(self)
-	play_action("moves/pick_up")
+	# Crouch for something off the floor, reach for anything higher.
+	var low := item.global_position.y - global_position.y < 0.5
+	play_action("moves/pick_up_object" if low else "moves/pick_up")
 
 
 ## [G]: set down the carried load if any, else drop the newest pack item.

@@ -119,8 +119,9 @@ func _run() -> void:
 		print("TEST FAIL: item did not stow into the pack")
 		quit(1)
 		return
-	if player._anim_player.current_animation != "moves/pick_up":
-		print("TEST FAIL: pick_up action did not play on pickup")
+	# Floor items get the crouched clip, higher ones the standing reach.
+	if not player._anim_player.current_animation in ["moves/pick_up", "moves/pick_up_object"]:
+		print("TEST FAIL: pick_up action did not play on pickup (got %s)" % player._anim_player.current_animation)
 		quit(1)
 		return
 

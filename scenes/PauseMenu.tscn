@@ -61,33 +61,25 @@ theme_override_font_sizes/font_size = 34
 text = "Controls"
 horizontal_alignment = 1
 
-[node name="Move" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
-theme_override_font_sizes/font_size = 20
-text = "[W] [A] [S] [D]  —  Move Character"
+[node name="BindHint" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
+theme_override_font_sizes/font_size = 15
+text = "Click a key to rebind it, then press any key or mouse button."
+horizontal_alignment = 1
 
-[node name="Interact" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
-theme_override_font_sizes/font_size = 20
-text = "[E]  —  Interact (valves, breaker, doors) / Rotate Mirror"
+[node name="Bindings" type="VBoxContainer" parent="Overlay/ControlsCenter/Panel/Lines"]
+theme_override_constants/separation = 4
 
 [node name="MirrorControl" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
-theme_override_font_sizes/font_size = 20
-text = "[Mouse]  —  Swivel Mirror while rotating or hauling"
-
-[node name="RotateCam" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
-theme_override_font_sizes/font_size = 20
-text = "[Q]  —  Rotate Camera 90°"
-
-[node name="Drop" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
-theme_override_font_sizes/font_size = 20
-text = "[G]  —  Drop Carried Item"
+theme_override_font_sizes/font_size = 17
+text = "[Mouse]  —  Swivel prism while pivoting or hauling"
 
 [node name="Esc" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 17
 text = "[ESC]  —  Pause / Close Minigame"
 
-[node name="Restart" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
-theme_override_font_sizes/font_size = 20
-text = "[R]  —  Quick Restart Run"
+[node name="ResetBindsButton" type="Button" parent="Overlay/ControlsCenter/Panel/Lines"]
+custom_minimum_size = Vector2(0, 34)
+text = "Reset Keys to Default"
 
 [node name="HintsSpacer" type="Label" parent="Overlay/ControlsCenter/Panel/Lines"]
 text = ""

@@ -28,12 +28,28 @@ func _ready() -> void:
 	_apply_scale(GameSettings.objectives_scale)
 	_build_notes_panel()
 	_build_inventory_bar()
+	_emote_wheel = EmoteWheel.new()
+	add_child(_emote_wheel)
 	# Start folded: the header stays as a "▶ Objectives" tab in the corner
 	# and the list unfolds on click, so the screen opens uncluttered.
 	_set_collapsed(true, false)
 
 
+var _emote_wheel: EmoteWheel
+
+
 func _input(event: InputEvent) -> void:
+	# Hold the emote key for the wheel; release plays the highlighted one.
+	if event.is_action_pressed("emote"):
+		var local := _local_player()
+		if local != null and not get_tree().paused:
+			_emote_wheel.open(local)
+			get_viewport().set_input_as_handled()
+		return
+	if event.is_action_released("emote") and _emote_wheel.is_open:
+		_emote_wheel.close(true)
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("notes"):
 		_notes_panel.visible = not _notes_panel.visible
 		_notes_hint.visible = not _notes_panel.visible
