@@ -12,13 +12,13 @@ extends Node
 enum State { PREGAME, PLAYING, WON, LOST }
 
 ## Countdown once the breaker powers the mansion (the crowbar/fuse hunt
-## before that is untimed). 4:00 is the game's billed pitch — the menu
-## art reads "A 4-Minute Co-op Puzzle Heist" — so it stays the default.
-## For reference when tuning: the post-power critical path measures
-## ~290 m, i.e. ~48 s of pure travel at top speed with perfect routing,
-## before any searching, puzzle time, or the half-speed battery carry.
-## Raise this if playtests show first-timers never finish.
-@export var run_time: float = 240.0
+## before that is untimed). Matches the menu art's billed pitch ("A
+## 6-Minute Co-op Puzzle Heist" — assets/menu/Menu.webp). The post-power
+## critical path measures ~290 m, i.e. ~48 s of pure travel at top speed
+## with perfect routing, before any searching, puzzle time, or the
+## half-speed battery carry — 4:00 left first-timers no room to actually
+## play, hence the raise to 6:00.
+@export var run_time: float = 360.0
 
 @onready var _mansion: MansionGenerator = $"../MansionGenerator"
 @onready var _timer_label: Label = $"../HUD/TimerLabel"

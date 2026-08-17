@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_menu"]
 [ext_resource type="Script" path="res://scripts/audio_synthesizer.gd" id="2_audio"]
-[ext_resource type="Texture2D" path="res://assets/menu/Menu.jpg" id="3_bg"]
+[ext_resource type="Texture2D" path="res://assets/menu/Menu.webp" id="3_bg"]
 [ext_resource type="AudioStream" path="res://assets/sfx/FireCrackle.mp3" id="4_crackle"]
 
 [node name="MainMenu" type="Control"]
