@@ -97,7 +97,6 @@ const ITEM_ICONS := {
 	"crowbars": "res://assets/ui/CrowbarIcon.png",
 	"small_wrenches": "res://assets/ui/SmallWrenchIcon.svg",
 	"big_wrenches": "res://assets/ui/WrenchIcon.svg",
-	"clock_gears": "res://assets/ui/GearIcon.svg",
 	"will_items": "res://assets/ui/WillIcon.svg",
 	"batteries": "res://assets/ui/BatteryIcon.svg",
 	"prisms": "res://assets/ui/PrismIcon.svg",

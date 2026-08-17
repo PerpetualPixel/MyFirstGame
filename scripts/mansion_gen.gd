@@ -6,7 +6,7 @@ extends Node3D
 ## driveway. A randomized spanning tree carved from the Foyer (excluding
 ## the Vault Study) guarantees reachability; the vault's only entrance is
 ## the gate-guarded doorway. Spawns all puzzles (laser mirror maze, the
-## hydraulic press, breaker box, grandfather clock), hinged doors,
+## hydraulic press, breaker box, astronomical puzzle box), hinged doors,
 ## fog-of-war shrouds, furniture, and ambient atmosphere.
 ## Grid convention: x grows east, y (grid) grows south (+Z in world).
 
@@ -36,8 +36,7 @@ const TOY_BOX_SCENE := preload("res://scenes/ToyBox.tscn")
 const KEYPAD_SCENE := preload("res://scenes/Puzzles/Keypad.tscn")
 const NOTEBOOK_SCENE := preload("res://scenes/NotebookPickup.tscn")
 const GARAGE_BUTTON_SCRIPT := preload("res://scripts/puzzles/garage_door_button.gd")
-const CLOCKWORK_SCENE := preload("res://scenes/Puzzles/ClockworkMechanism.tscn")
-const BRASS_GEAR_SCENE := preload("res://scenes/BrassGear.tscn")
+const PUZZLE_BOX_SCRIPT := preload("res://scripts/puzzles/puzzle_box.gd")
 const PRISM_SCENE := preload("res://scenes/Prism.tscn")
 
 ## Three hand-authored, guaranteed-solvable laser routes; one is drawn per
@@ -83,18 +82,28 @@ const ROUTE_VARIANTS := [
 		"doors": [[Vector2i(2, 2), Vector2i(2, 1)], [Vector2i(2, 1), Vector2i(1, 1)]],
 	},
 	{
-		# Emitter in the foyer's NW corner fires east along the parlor
-		# wall; the beam dives through the parlor archway and rings all
-		# four parlor corners before dropping onto the safe left of the
+		# Detours through a THIRD room before ever reaching the parlor:
+		# the opening three legs are west_wing's own proven corner chain
+		# (NW room -> west wing -> parlor), reused verbatim since that
+		# exact diagonal math is what actually threads each doorway: the
+		# beam starts in the mansion's NW room, crosses into the west
+		# wing, crosses again into the central parlor, then rings three
+		# more parlor corners before dropping onto the safe left of the
 		# door. The parlor's east doorway is an archway too so no swung
-		# panel can cut the leg along that wall.
+		# panel can cut a leg along that wall.
 		"name": "parlor_ring",
-		"emitter": Vector3(-3.17, 0, 6.83),
-		"emitter_yaw": -90.0,
+		"emitter": Vector3(-13.17, 0, 6.83),
+		"emitter_yaw": -60.0,
 		"maze_cell": Vector2i(1, 1),
-		"mirrors": [Vector3(3.17, 0, 6.83), Vector3(-3.17, 0, 3.17), Vector3(3.17, 0, 3.17), Vector3(3.17, 0, -3.17), Vector3(-3.17, 0, -3.17)],
+		"mirrors": [
+			Vector3(-6.83, 0, 3.17), Vector3(-6.83, 0, -3.17), Vector3(-3.17, 0, 3.17),
+			Vector3(3.17, 0, 3.17), Vector3(3.17, 0, -3.17), Vector3(-3.17, 0, -3.17),
+		],
 		"safe": Vector3(-2.2, 0, -4.85),
-		"doors": [[Vector2i(1, 2), Vector2i(1, 1)], [Vector2i(1, 1), Vector2i(2, 1)]],
+		"doors": [
+			[Vector2i(0, 2), Vector2i(0, 1)], [Vector2i(0, 1), Vector2i(1, 1)],
+			[Vector2i(1, 2), Vector2i(1, 1)], [Vector2i(1, 1), Vector2i(2, 1)],
+		],
 	},
 ]
 ## Adjacent room pairs: the pair's FIRST room becomes the hydraulic
@@ -105,21 +114,11 @@ const VALVE_PAIR_OPTIONS := [
 	[Vector2i(2, 0), Vector2i(2, 1)], [Vector2i(0, 0), Vector2i(0, 1)],
 ]
 ## Never the central parlor: the beam routes park mirrors in its
-## corners, and the clock stands on a room's south wall beside one.
+## corners, and the puzzle box stands on a room's south wall beside one.
 const CLOCK_CELL_OPTIONS: Array[Vector2i] = [Vector2i(2, 0), Vector2i(0, 0)]
-const GEAR_CELL_OPTIONS: Array[Vector2i] = [
-	Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(2, 0),
-	Vector2i(2, 1), Vector2i(2, 2), Vector2i(1, 2),
-]
 const DECOY_CELL_OPTIONS: Array[Vector2i] = [
 	Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2),
 	Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2),
-]
-## teeth, label, mesh radius (hiding rooms are drawn per run)
-const GEAR_SPECS := [
-	[8, "Small Gear (8-tooth)", 0.2],
-	[12, "Medium Gear (12-tooth)", 0.28],
-	[16, "Large Gear (16-tooth)", 0.36],
 ]
 
 ## Test hook: force a specific ROUTE_VARIANTS index (-1 = seeded random).
@@ -135,8 +134,8 @@ var _valve_cells: Array = []
 var _mirror_parking: Array[Vector3] = []
 ## Floor spots where a misplaced prism is lying this run.
 var _loose_prisms: Array[Vector3] = []
-var _clock_cell := Vector2i(1, 1)
-var _gear_cells: Array = []
+## Room the puzzle box was placed in this run (read by tests and props).
+var _puzzle_box_cell := Vector2i(1, 1)
 var _decoy_cell := Vector2i(2, 1)
 var _keypad: Keypad
 var _garage_button: GarageDoorButton
@@ -244,7 +243,7 @@ func get_spawn_position() -> Vector3:
 
 
 ## Draw this run's structural layout from the seeded rng: laser route,
-## valve rooms, clock location, gear hiding rooms, and the decoy's spot.
+## valve rooms, puzzle box location, and the decoy's spot.
 ## Combined with door carving, wiring, and spawn rotations, no two seeds
 ## play the same.
 func _pick_run_layout() -> void:
@@ -256,39 +255,39 @@ func _pick_run_layout() -> void:
 	active_route = picked.duplicate()
 	active_route["solutions"] = _route_solutions(picked)
 	var maze: Vector2i = active_route["maze_cell"]
+	# Every room this run's beam actually passes through — not just
+	# maze_cell, which only ever named the route's "main" room. A route
+	# can detour through 2-3 rooms (see ROUTE_VARIANTS), and the press
+	# console, battery cage, and puzzle box must never land in any of
+	# them: heavy furniture in a beam room risks blocking or visually
+	# burying the laser line.
+	var route_cells := _route_room_cells(active_route)
 
 	var pair_options: Array = VALVE_PAIR_OPTIONS.filter(
-		func(pair: Array) -> bool: return not maze in pair)
+		func(pair: Array) -> bool: return not (pair[0] in route_cells or pair[1] in route_cells))
 	_valve_cells = pair_options[_rng.randi_range(0, pair_options.size() - 1)]
-
-	# The clock never shares a room with the maze or the hydraulic press
-	# (the press room is dedicated: console + battery cage).
-	var clock_options: Array = CLOCK_CELL_OPTIONS.filter(
-		func(cell: Vector2i) -> bool: return cell != maze and cell != _valve_cells[0])
-	_clock_cell = clock_options[_rng.randi_range(0, clock_options.size() - 1)]
-
-	# Never hide gears in the press's dedicated room: its console sits on
-	# the exact north-wall strip gears spawn against, and a RigidBody
-	# born inside that collision box gets ejected somewhere unreachable.
-	var gear_pool: Array = GEAR_CELL_OPTIONS.filter(
-		func(cell: Vector2i) -> bool: return cell != _valve_cells[0])
-	for i in range(gear_pool.size() - 1, 0, -1):
-		var j := _rng.randi_range(0, i)
-		var tmp: Vector2i = gear_pool[i]
-		gear_pool[i] = gear_pool[j]
-		gear_pool[j] = tmp
-	_gear_cells = gear_pool.slice(0, GEAR_SPECS.size())
 
 	front_door_pin = _rng.randi_range(1000, 9999)
 
 	var decoy_options: Array = DECOY_CELL_OPTIONS.filter(
 		func(cell: Vector2i) -> bool:
 			# Never park the decoy mirror on the live beam corridor — at a
-			# room center it can swallow the beam before the real mirrors
-			# (the emitter fires straight through (0,2)/(2,2) on the west
-			# and east routes).
-			return cell != maze and not _near_beam_path(get_room_center(cell)))
+			# room center it can swallow the beam before the real mirrors.
+			return not cell in route_cells and not _near_beam_path(get_room_center(cell)))
 	_decoy_cell = decoy_options[_rng.randi_range(0, decoy_options.size() - 1)]
+
+
+## Distinct grid cells an active route's beam actually travels through:
+## the emitter, every mirror, and the safe, each mapped to its room cell
+## via _cell_of() (defined below, shared with mirror-parking spacing).
+func _route_room_cells(route: Dictionary) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	var pts: Array = [route["emitter"]] + (route["mirrors"] as Array) + [route["safe"]]
+	for p in pts:
+		var cell := _cell_of(p)
+		if not cell in cells:
+			cells.append(cell)
+	return cells
 
 
 ## Solved root yaw (degrees) for each of a route's mirrors, derived from
@@ -555,7 +554,7 @@ func _spawn_puzzle() -> void:
 	_generated_root.add_child(battery)
 
 	# World spots the mirrors' wall placement must keep clear of (the
-	# clock, press, cage, and gears are appended as they spawn below).
+	# puzzle box, press, and cage are appended as they spawn below).
 	var reserved: Array[Vector3] = [active_route["emitter"], active_route["safe"]]
 
 	# The wall safe beside the vault doorway is the beam's target: the
@@ -613,40 +612,25 @@ func _spawn_puzzle() -> void:
 	machine.puzzle_solved.connect(hydraulic_gate.activate)
 	battery.position = cage + Vector3(0, 0.4, -0.25)
 
-	# Grandfather clock flush against its room's south wall (back at the
-	# wall's inner face, clear of the x -1..1 door gap), facing north into
-	# the room; the Brass Wrench is stashed in its compartment until the
-	# gear puzzle runs the pendulum. Socket requirements are shuffled and
-	# their numerals re-engraved.
-	var clock := CLOCKWORK_SCENE.instantiate() as ClockworkMechanism
-	clock.name = "Clock"
-	clock.position = get_room_center(_clock_cell) + Vector3(-3.0, 0, room_size / 2.0 - wall_thickness / 2.0 - 0.4)
-	clock.rotation.y = PI
-	_generated_root.add_child(clock)
-	reserved.append(clock.position)
-	var teeth_perm := [8, 12, 16]
-	for i in range(teeth_perm.size() - 1, 0, -1):
-		var j := _rng.randi_range(0, i)
-		var tmp: int = teeth_perm[i]
-		teeth_perm[i] = teeth_perm[j]
-		teeth_perm[j] = tmp
-	var numerals := {8: "VIII", 12: "XII", 16: "XVI"}
-	for i in clock._sockets.size():
-		var socket: GearSocket = clock._sockets[i]
-		socket.required_teeth = teeth_perm[i]
-		socket.display_name = "Gear Socket %s" % numerals[teeth_perm[i]]
-		socket.get_node("Numeral").text = numerals[teeth_perm[i]]
+	# Puzzle box flush against its room's south wall (back at the wall's
+	# inner face, clear of the x -1..1 door gap), facing north into the
+	# room; the Brass Wrench is stashed inside until the dial-and-lever
+	# sequence unlocks it. Untyped so the script-added properties resolve
+	# dynamically post-set_script (garage-button pattern).
+	var box_route_cells := _route_room_cells(active_route)
+	var puzzle_box_cell_options: Array = CLOCK_CELL_OPTIONS.filter(
+		func(cell: Vector2i) -> bool: return not cell in box_route_cells and cell != _valve_cells[0])
+	_puzzle_box_cell = puzzle_box_cell_options[_rng.randi_range(0, puzzle_box_cell_options.size() - 1)]
+	var puzzle_box = StaticBody3D.new()
+	puzzle_box.name = "PuzzleBox"
+	puzzle_box.set_script(PUZZLE_BOX_SCRIPT)
+	puzzle_box.position = get_room_center(_puzzle_box_cell) + Vector3(-3.0, 0, room_size / 2.0 - wall_thickness / 2.0 - 0.4)
+	puzzle_box.rotation.y = PI
+	_generated_root.add_child(puzzle_box)
+	reserved.append(puzzle_box.position)
 	var wrench := BRASS_WRENCH_SCENE.instantiate() as Grabbable
 	wrench.name = "Wrench"
-	clock.stash_item(wrench)
-
-	for i in GEAR_SPECS.size():
-		var spec: Array = GEAR_SPECS[i]
-		# Just west of the north door's swing line, in front of the wall
-		# props' slot, clear of the corner mirror spot.
-		var gear_at := get_room_center(_gear_cells[i]) + Vector3(-1.5, 0.3, -3.55)
-		_spawn_gear(spec[0], spec[1], spec[2], gear_at, "Gear_%d" % i)
-		reserved.append(gear_at)
+	puzzle_box.stash_item(wrench)
 
 	_spawn_mirrors(reserved)
 
@@ -865,24 +849,6 @@ func _roll_target_psi(pressures: Array[int]) -> int:
 	return 0  # unreachable; single-valve masks are never zero
 
 
-func _spawn_gear(teeth: int, label: String, radius: float, at: Vector3, node_name: String) -> void:
-	var gear := BRASS_GEAR_SCENE.instantiate() as Grabbable
-	gear.name = node_name
-	gear.display_name = label
-	gear.set_meta("teeth", teeth)
-	gear.position = at
-	var mesh_node: MeshInstance3D = gear.get_node("Mesh")
-	var mesh := mesh_node.mesh.duplicate() as CylinderMesh
-	mesh.top_radius = radius
-	mesh.bottom_radius = radius
-	mesh_node.mesh = mesh
-	var col: CollisionShape3D = gear.get_node("CollisionShape3D")
-	var shape := col.shape.duplicate() as CylinderShape3D
-	shape.radius = radius + 0.02
-	col.shape = shape
-	_generated_root.add_child(gear)
-
-
 # --- Doors, entrance, props, shrouds -------------------------------------
 
 
@@ -980,7 +946,7 @@ func _spawn_entrance() -> void:
 ## spots (|axis| > 2.67), and the straight lines from the room's center
 ## to each of its doors — so the middle of every room and every
 ## door-to-door path stays open. Slots that would collide with a puzzle
-## fixture (clock, press console, cage gate, keypad, parked mirrors) are
+## fixture (puzzle box, press console, cage gate, keypad, parked mirrors) are
 ## skipped. Each room also gets one lamp table (its light source), a
 ## candle sconce, and paintings above the low pieces.
 const FLANK_OFFSET := 2.2
@@ -1006,7 +972,7 @@ func _spawn_props() -> void:
 	var blocked: Array[Vector3] = []
 	blocked.append_array(_mirror_parking)
 	blocked.append_array(_loose_prisms)
-	blocked.append(get_room_center(_clock_cell) + Vector3(-3.0, 0, 4.45))
+	blocked.append(get_room_center(_puzzle_box_cell) + Vector3(-3.0, 0, 4.45))
 	if not _valve_cells.is_empty():
 		var press_room := get_room_center(_valve_cells[0])
 		blocked.append(press_room + Vector3(1.3, 0, -4.35))       # console
@@ -1345,7 +1311,7 @@ func _spawn_interior_atmosphere() -> void:
 
 	# Area rugs in the foyer, both parlors, and a seeded scatter of others.
 	var rug_cells: Array[Vector2i] = [FOYER_CELL]
-	for cell: Vector2i in [_clock_cell, PARLOR_CELL]:
+	for cell: Vector2i in [_puzzle_box_cell, PARLOR_CELL]:
 		if not cell in rug_cells:
 			rug_cells.append(cell)
 	for z in GRID_SIZE.y:
@@ -1443,8 +1409,11 @@ func _spawn_estate() -> void:
 	for lx in [-3.4, 3.4]:
 		_add_lantern(Vector3(lx, 0, 36.5), 2.0)
 
-	# Antique steam roadster on the gravel driveway.
+	# Antique steam roadster on the gravel driveway, a mechanic's toolbox
+	# crate parked beside its running board — a second, non-junk-lot home
+	# for the crowbar, on the theory someone left it there fixing the car.
 	_spawn_roadster(Vector3(9.5, 0, 28.5), -0.35)
+	_add_prop(Vector3(7.85, 0.24, 29.75), Vector3(0.5, 0.42, 0.42), _crate_material)
 
 	# Detached garage at the driveway's end, against the east hedge line.
 	_spawn_garage()
@@ -1606,14 +1575,18 @@ func _spawn_garage() -> void:
 	_add_prop(Vector3(26.8, 0.45, 26.2), Vector3(0.6, 0.9, 0.6), _iron_material)
 	_add_prop(Vector3(25.6, 0.35, 26.0), Vector3(0.7, 0.7, 0.7), _crate_material)
 
-	# Crowbar hidden at one of several seeded spots in the junk — it pries
-	# the garage's side door open. Every spot sits in the walkable
-	# corridor or the south entry, never boxed in.
+	# Crowbar hidden at one of several seeded spots — it pries the
+	# garage's side door open. Every spot sits directly against (or on
+	# top of) a specific nearby prop, never bare ground: the junk-lot
+	# bins/crate/car, or the mechanic's toolbox by the roadster out on
+	# the driveway.
 	var crowbar := CROWBAR_SCENE.instantiate() as Grabbable
 	crowbar.name = "Crowbar"
 	var crowbar_spots: Array[Vector3] = [
-		Vector3(26.5, 0.25, 18.4), Vector3(26.4, 0.25, 21.6), Vector3(27.6, 0.25, 23.2),
-		Vector3(26.9, 0.25, 24.8), Vector3(24.5, 0.25, 24.8),
+		Vector3(26.6, 0.25, 17.1),   # against the north-end bins
+		Vector3(27.5, 0.25, 21.1),   # leaning on the junk car's flank
+		Vector3(27.6, 0.83, 25.9),   # atop the south-arm crate
+		Vector3(7.85, 0.52, 29.75),  # atop the roadster's toolbox crate
 	]
 	crowbar.position = crowbar_spots[_rng.randi_range(0, crowbar_spots.size() - 1)]
 	crowbar.rotation.y = _rng.randf_range(0.0, TAU)
@@ -1644,13 +1617,15 @@ func _spawn_garage() -> void:
 	small_wrench.rotation.y = _rng.randf_range(0.0, TAU)
 	_generated_root.add_child(small_wrench)
 
-	# Ledger notebook in the trash out back — it records the door code.
+	# Ledger notebook — it records the door code. Every spot rests on (or
+	# tucked directly beside) a specific prop: junk-lot bins/crate, or
+	# the porch firewood stack out front.
 	var notebook := NOTEBOOK_SCENE.instantiate() as NotebookPickup
 	notebook.name = "Notebook"
 	var notebook_spots: Array[Vector3] = [
 		Vector3(26.7, 0.92, 16.8),   # on a bin lid at the U's north end
-		Vector3(26.3, 0.05, 19.9),   # corridor floor beside the car
 		Vector3(27.9, 0.82, 25.9),   # atop the south-arm crate
+		Vector3(5.2, 0.42, 23.3),    # resting on the porch firewood stack
 	]
 	notebook.position = notebook_spots[_rng.randi_range(0, notebook_spots.size() - 1)]
 	notebook.rotation.y = _rng.randf_range(0.0, TAU)

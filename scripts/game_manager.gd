@@ -13,17 +13,13 @@ enum State { PREGAME, PLAYING, WON, LOST }
 
 ## Countdown once the breaker powers the mansion (the crowbar/fuse hunt
 ## before that is untimed). Matches the menu art's billed pitch ("A
-## 6-Minute Co-op Puzzle Heist" — assets/menu/Menu.webp). The post-power
-## critical path measures ~290 m, i.e. ~48 s of pure travel at top speed
-## with perfect routing, before any searching, puzzle time, or the
-## half-speed battery carry — 4:00 left first-timers no room to actually
-## play, hence the raise to 6:00.
-@export var run_time: float = 360.0
+## 4-Minute Co-op Puzzle Heist").
+@export var run_time: float = 240.0
 
 @onready var _mansion: MansionGenerator = $"../MansionGenerator"
 @onready var _timer_label: Label = $"../HUD/TimerLabel"
 @onready var _obj_breaker: Label = $"../HUD/Objectives/BreakerObjective"
-@onready var _obj_clock: Label = $"../HUD/Objectives/ClockObjective"
+@onready var _obj_clock: Label = $"../HUD/Objectives/ClockObjective"  # now the puzzle box
 @onready var _obj_wrench: Label = $"../HUD/Objectives/WrenchObjective"
 @onready var _obj_steam: Label = $"../HUD/Objectives/SteamObjective"
 @onready var _obj_light: Label = $"../HUD/Objectives/LightObjective"
@@ -39,8 +35,7 @@ var state := State.PREGAME
 var time_left: float
 
 var _breaker_done := false
-var _clock_done := false
-var _gears_placed := 0
+var _puzzle_box_done := false
 var _small_wrench_found := false
 var _big_wrench_found := false
 var _light_done := false
@@ -68,9 +63,8 @@ func _ready() -> void:
 		wrench.grabbed.connect(_on_small_wrench_grabbed)
 	for wrench in get_tree().get_nodes_in_group("big_wrenches"):
 		wrench.grabbed.connect(_on_big_wrench_grabbed)
-	for clock in get_tree().get_nodes_in_group("clockworks"):
-		clock.gear_inserted.connect(_on_gears_changed)
-		clock.clock_completed.connect(_on_clock_completed)
+	for box in get_tree().get_nodes_in_group("puzzle_boxes"):
+		box.puzzle_unlocked.connect(_on_puzzle_box_unlocked)
 	for vault in get_tree().get_nodes_in_group("vault_doors"):
 		vault.opened.connect(func() -> void: show_banner("VAULT GATE UNLOCKED!"))
 	for will in get_tree().get_nodes_in_group("will_items"):
@@ -243,14 +237,9 @@ func _on_will_grabbed(_by: Node3D) -> void:
 	show_banner("THE WILL SECURED — ESCAPE TO THE PORCH!")
 
 
-func _on_gears_changed(placed: int) -> void:
-	_gears_placed = placed
-	_refresh_objectives()
-
-
-func _on_clock_completed() -> void:
-	_clock_done = true
-	show_banner("THE GRANDFATHER CLOCK AWAKENS!")
+func _on_puzzle_box_unlocked() -> void:
+	_puzzle_box_done = true
+	show_banner("THE PUZZLE BOX UNLOCKS!")
 	_refresh_objectives()
 
 
@@ -320,7 +309,7 @@ func _lose() -> void:
 		return
 	state = State.LOST
 	_end_title.text = "Mansion Sealed Forever!"
-	_end_subtitle.text = "The clockwork lock clicks shut. Press [R] to restart"
+	_end_subtitle.text = "The mansion's locks click shut. Press [R] to restart"
 	_end_screen.visible = true
 	if not NetworkSession.multiplayer_active:
 		get_tree().paused = true
@@ -333,8 +322,8 @@ func _refresh_objectives() -> void:
 
 	_obj_breaker.text = "%s Restore Power" % _checkbox(_breaker_done)
 	_obj_breaker.modulate = done_color if _breaker_done else Color.WHITE
-	_obj_clock.text = "%s Restore the Grandfather Clock" % _checkbox(_clock_done)
-	_obj_clock.modulate = done_color if _clock_done else Color.WHITE
+	_obj_clock.text = "%s Crack the Puzzle Box" % _checkbox(_puzzle_box_done)
+	_obj_clock.modulate = done_color if _puzzle_box_done else Color.WHITE
 	_obj_wrench.text = "%s Gather the Two Wrenches" % _checkbox(wrenches_ok)
 	_obj_wrench.modulate = done_color if wrenches_ok else Color.WHITE
 	_obj_steam.text = "%s Balance the Hydraulic Press" % _checkbox(_pressure_done)

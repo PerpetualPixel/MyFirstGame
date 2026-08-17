@@ -53,7 +53,7 @@ func _run() -> void:
 	await physics_frame
 	if twin.active_route["name"] != gen.active_route["name"] \
 			or str(twin._valve_cells) != str(gen._valve_cells) \
-			or str(twin._gear_cells) != str(gen._gear_cells):
+			or str(twin._puzzle_box_cell) != str(gen._puzzle_box_cell):
 		print("TEST FAIL: shared seed did not reproduce the layout")
 		quit(1)
 		return

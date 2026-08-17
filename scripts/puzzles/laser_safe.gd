@@ -33,6 +33,11 @@ var _panel_open := false
 
 func _ready() -> void:
 	add_to_group("laser_safes")
+	# The close-up panel's ESC handler lives on THIS node (see
+	# _unhandled_input below); solo pauses the whole tree, so this node
+	# needs to keep receiving input while paused or the close button
+	# becomes the only way out of the note close-up.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	display_name = "Wall Safe"
 	prompt_action = "Inspect Safe"
 	prompt_height = 1.9

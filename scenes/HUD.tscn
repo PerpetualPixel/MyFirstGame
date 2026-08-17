@@ -64,7 +64,7 @@ pivot_offset = Vector2(150, 28)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 8
 theme_override_font_sizes/font_size = 44
-text = "6:00"
+text = "4:00"
 horizontal_alignment = 1
 
 [node name="Objectives" type="VBoxContainer" parent="."]
@@ -93,7 +93,7 @@ text = "[ ] Restore Power"
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 20
-text = "[ ] Restore the Grandfather Clock"
+text = "[ ] Crack the Puzzle Box"
 
 [node name="WrenchObjective" type="Label" parent="Objectives"]
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)

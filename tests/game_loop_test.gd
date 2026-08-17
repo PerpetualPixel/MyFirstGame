@@ -2,12 +2,14 @@ extends SceneTree
 ## Headless end-to-end test of the deepened game loop:
 ## crowbar/toy-crate gating -> two-fuse breaker (powers keypad, starts
 ## timer) -> keypad PIN opens the front doors (code from the junk-lot
-## notebook) -> free-angle mirror swivel & detent snap -> clockwork
-## gear puzzle (wrong gear fails, correct set runs the clock and releases
-## the Brass Wrench) -> hydraulic press (fittings sequenced behind the
-## Small/Brass wrenches, then five signed-PSI toggle valves matched to a
-## target) -> the pressure lock frees the Heavy Battery -> laser maze ->
-## Will to the porch exit -> WIN. Plus pause menu checks.
+## notebook) -> free-angle mirror swivel & detent snap -> puzzle box
+## dial-and-lever combination (wrong symbol or mistimed input resets it,
+## the engraved sequence unlocks it and releases the Brass Wrench) ->
+## hydraulic press (fittings sequenced behind the Small/Brass wrenches,
+## then five signed-PSI toggle valves matched to a target) -> the
+## pressure lock frees the Heavy Battery -> laser maze (every prism
+## table required, spans >= 2 rooms) -> Will to the porch exit -> WIN.
+## Plus pause menu checks.
 ## Run: godot --headless --path . --script res://tests/game_loop_test.gd
 
 func _initialize() -> void:
@@ -43,7 +45,8 @@ func _run() -> void:
 
 	var gen: MansionGenerator = main.get_node("MansionGenerator")
 	var route: Dictionary = gen.active_route
-	print("run layout: route=%s valves=%s clock=%s gears=%s" % [route["name"], gen._valve_cells, gen._clock_cell, gen._gear_cells])
+	print("run layout: route=%s (%d mirrors) valves=%s puzzle_box=%s" % [
+		route["name"], route["mirrors"].size(), gen._valve_cells, gen._puzzle_box_cell])
 	var player: Player = main.get_node("Players/1")
 	var gm: GameManager = main.get_node("GameManager")
 	var pause_menu: PauseMenu = main.get_node("PauseMenu")
@@ -53,28 +56,20 @@ func _run() -> void:
 	var vault_doors := _find_all(main, "VaultDoor")
 	var hinged := _find_all(main, "Door")
 	var breakers := _find_all(main, "BreakerBox")
-	var clocks := _find_all(main, "ClockworkMechanism")
-	var gears := get_nodes_in_group("clock_gears")
-	print("found: %d mirrors, %d presses, %d gates, %d vault doors, %d hinged, %d breakers, %d clocks, %d gears" % [
-		mirrors.size(), machines.size(), gates.size(), vault_doors.size(), hinged.size(), breakers.size(), clocks.size(), gears.size()])
+	var boxes := _find_all(main, "PuzzleBox")
+	print("found: %d mirrors, %d presses, %d gates, %d vault doors, %d hinged, %d breakers, %d puzzle boxes" % [
+		mirrors.size(), machines.size(), gates.size(), vault_doors.size(), hinged.size(), breakers.size(), boxes.size()])
 	if mirrors.size() != route["mirrors"].size() + 1 or machines.size() != 1 or gates.size() != 1 \
-			or vault_doors.size() != 1 or breakers.size() != 1 or clocks.size() != 1 \
-			or gears.size() != 3 or hinged.size() < 5:
+			or vault_doors.size() != 1 or breakers.size() != 1 or boxes.size() != 1 or hinged.size() < 5:
 		print("TEST FAIL: unexpected element counts")
 		quit(1)
 		return
 	var machine: PressurePuzzleManager = machines[0]
 	var pressure_gate: HydraulicDoor = gates[0]
-	# The press room must never double as a gear hiding room — a gear
-	# spawned inside the console's collision box gets ejected out of reach.
-	if gen._valve_cells[0] in gen._gear_cells:
-		print("TEST FAIL: gear hidden in the press's dedicated room")
-		quit(1)
-		return
-	# The clock and the press live in different rooms, and the console
-	# stands right beside the hydraulic gate it controls.
-	if gen._clock_cell == gen._valve_cells[0]:
-		print("TEST FAIL: clock and press share a room")
+	# The puzzle box and the press live in different rooms, and the
+	# console stands right beside the hydraulic gate it controls.
+	if gen._puzzle_box_cell == gen._valve_cells[0]:
+		print("TEST FAIL: puzzle box and press share a room")
 		quit(1)
 		return
 	if machine.global_position.distance_to(pressure_gate.global_position) > 3.5:
@@ -87,10 +82,22 @@ func _run() -> void:
 			machine.valve_on.size(), machine.small_tight.size(), machine.big_tight.size()])
 		quit(1)
 		return
+	# Every route must span at least 2 real rooms and, per the necessity
+	# design, provably require every one of its prism tables — asserted
+	# separately by puzzle_test.gd's removal sweep; here we just check
+	# the room-count invariant holds for whichever route this run drew.
+	var room_cells := {}
+	var route_pts: Array = [route["emitter"]] + route["mirrors"] + [route["safe"]]
+	for p in route_pts:
+		room_cells[gen._cell_of(p)] = true
+	if room_cells.size() < 2:
+		print("TEST FAIL: route %s only touches %d room(s)" % [route["name"], room_cells.size()])
+		quit(1)
+		return
 	var vault_door: VaultDoor = vault_doors[0]
 	var breaker: BreakerBox = breakers[0]
 	var minigame: FusePanel = breaker.minigame
-	var clock: ClockworkMechanism = clocks[0]
+	var box: PuzzleBox = boxes[0]
 
 	# --- PREGAME: frozen timer ---
 	for i in 60:
@@ -339,104 +346,100 @@ func _run() -> void:
 		return
 	print("free-angle swivel + detent snap OK")
 
-	# --- Clockwork: wrong gear fails, correct set releases the wrench ---
+	# --- Puzzle box: wrong symbol resets it, mistimed input resets it,
+	# the engraved sequence unlocks it and releases the wrench ---
 	var wrench: Grabbable = get_nodes_in_group("big_wrenches")[0]
-	if wrench.collision_layer != 0 or wrench.get_parent() != clock:
-		print("TEST FAIL: wrench not stashed inside the clock")
+	if wrench.collision_layer != 0 or wrench.get_parent() != box:
+		print("TEST FAIL: wrench not stashed inside the puzzle box")
 		quit(1)
 		return
-	var gear_by_teeth := {}
-	for gear in gears:
-		gear_by_teeth[int(gear.get_meta("teeth"))] = gear
-	var sockets: Array = clock._sockets
-
-	# Seat the 12-tooth gear in the 8-tooth socket: clock must stay dead.
-	var socket8: GearSocket = null
-	for s in sockets:
-		if s.required_teeth == 8:
-			socket8 = s
-	# Panel modal: [E] on the case opens the gear-train overlay (pausing
-	# solo); ESC steps away.
-	clock.interact(player)
+	# Panel modal: [E] on the case opens the dial overlay (pausing solo);
+	# ESC steps away.
+	box.interact(player)
 	await process_frame
-	if not clock.minigame.is_open or not paused:
-		print("TEST FAIL: clock panel did not open/pause")
+	if not box._panel_open or not paused:
+		print("TEST FAIL: puzzle box panel did not open/pause")
 		quit(1)
 		return
-	# The panel's numerals must reflect the per-run shuffled requirements
-	# (the generator re-engraves the sockets AFTER the clock enters the
-	# tree, so a build-time snapshot lies and makes the puzzle unwinnable).
-	var numeral_for := {8: "VIII", 12: "XII", 16: "XVI"}
-	for i in sockets.size():
-		var shown: String = clock.minigame._numeral_labels[i].text
-		if shown != numeral_for[sockets[i].required_teeth]:
-			print("TEST FAIL: panel shows %s over a socket wanting %d teeth" % [shown, sockets[i].required_teeth])
-			quit(1)
-			return
 	_press_escape()
 	await process_frame
 	await process_frame
-	if clock.minigame.is_open or paused:
-		print("TEST FAIL: ESC did not close the clock panel")
+	if box._panel_open or paused:
+		print("TEST FAIL: ESC did not close the puzzle box panel")
 		quit(1)
 		return
-	player.teleport(gear_by_teeth[12].global_position + Vector3(0, 0, 1.0))
-	for i in 10:
-		await physics_frame
-	player.pick_up(gear_by_teeth[12])
-	socket8.request_seat(player, gear_by_teeth[12])
-	if clock.is_running or socket8.gear != gear_by_teeth[12] or not player.inventory.is_empty():
-		print("TEST FAIL: wrong-gear insertion behaved unexpectedly")
-		quit(1)
-		return
-	socket8.request_remove(player)  # pop it back out (panel click path)
-	for i in 20:
-		await physics_frame
-	if socket8.gear != null:
-		print("TEST FAIL: could not remove a seated gear")
+	box.interact(player)
+	await process_frame
+
+	# A wrong symbol on the very first slot resets the whole attempt.
+	var correct0: String = box.active_target_sequence[0]
+	var wrong0 := ""
+	for sym in PuzzleBox.SYMBOLS:
+		if sym != correct0:
+			wrong0 = sym
+			break
+	box.register_dial_input(wrong0)
+	if box.current_input_buffer.size() != 0 or box.is_locked == false:
+		print("TEST FAIL: wrong symbol did not reset the puzzle box")
 		quit(1)
 		return
 
-	# Correct arrangement (request_seat is the chooser's replicated path;
-	# a headless test cannot click the popup).
-	for s in sockets:
-		var gear: Grabbable = gear_by_teeth[s.required_teeth]
-		if not player.inventory.has(gear):
-			player.teleport(gear.global_position + Vector3(0, 0, 1.0))
-			for i in 10:
-				await physics_frame
-			player.pick_up(gear)
-		if not player.inventory.has(gear):
-			print("TEST FAIL: could not pack %s" % gear.display_name)
-			quit(1)
-			return
-		s.request_seat(player, gear)
-	if not clock.is_running:
-		print("TEST FAIL: clock did not start with correct gears")
+	# Touching the dial while the mechanism is still advancing fails it too.
+	box.register_dial_input(correct0)
+	if box.current_input_buffer != [correct0]:
+		print("TEST FAIL: correct symbol was not accepted")
 		quit(1)
 		return
-	for i in 120:
+	box.register_advance_input()
+	if not box.is_waiting_for_cadence:
+		print("TEST FAIL: lever pull did not start the cadence lock")
+		quit(1)
+		return
+	box.register_dial_input(box.active_target_sequence[2])  # correct next symbol, but too soon
+	if box.current_input_buffer.size() != 0:
+		print("TEST FAIL: input during the cadence lock did not fail the attempt")
+		quit(1)
+		return
+
+	# The full engraved sequence, waiting out each cadence lock, unlocks it.
+	for i in box.active_target_sequence.size():
+		var expected: String = box.active_target_sequence[i]
+		if expected == PuzzleBox.ADVANCE_SYMBOL:
+			box.register_advance_input()
+			for w in 60:  # cadence_window_sec (0.7s) + margin
+				await physics_frame
+			if box.is_waiting_for_cadence:
+				print("TEST FAIL: cadence lock never cleared")
+				quit(1)
+				return
+		else:
+			box.register_dial_input(expected)
+	if box.is_locked:
+		print("TEST FAIL: puzzle box did not unlock on the correct sequence")
+		quit(1)
+		return
+	for i in 60:
 		await physics_frame
-	if wrench.collision_layer == 0 or wrench.get_parent() == clock:
+	if wrench.collision_layer == 0 or wrench.get_parent() == box:
 		print("TEST FAIL: compartment did not release the wrench")
 		quit(1)
 		return
 	# It must land out the FRONT of the case (the back stands against the
 	# room wall) and stay inside the room, not in the masonry.
-	var to_wrench := wrench.global_position - clock.global_position
-	var clock_front := clock.global_transform.basis.z
-	if to_wrench.dot(clock_front) < 0.4:
-		print("TEST FAIL: wrench dropped behind the clock (offset %s)" % to_wrench)
+	var to_wrench := wrench.global_position - box.global_position
+	var box_front := box.global_transform.basis.z
+	if to_wrench.dot(box_front) < 0.4:
+		print("TEST FAIL: wrench dropped behind the puzzle box (offset %s)" % to_wrench)
 		quit(1)
 		return
-	var clock_room := gen.get_room_center(gen._clock_cell)
-	if absf(wrench.global_position.x - clock_room.x) > 4.8 or absf(wrench.global_position.z - clock_room.z) > 4.8:
-		print("TEST FAIL: wrench landed outside the clock room at %s" % wrench.global_position)
+	var box_room := gen.get_room_center(gen._puzzle_box_cell)
+	if absf(wrench.global_position.x - box_room.x) > 4.8 or absf(wrench.global_position.z - box_room.z) > 4.8:
+		print("TEST FAIL: wrench landed outside the puzzle box's room at %s" % wrench.global_position)
 		quit(1)
 		return
-	print("clockwork gear puzzle OK")
+	print("puzzle box dial-and-lever sequence OK")
 
-	# --- Pause menu freezes the clock ---
+	# --- Pause menu freezes the run ---
 	pause_menu.open_menu()
 	await process_frame
 	var t0: float = gm.time_left
@@ -506,7 +509,7 @@ func _run() -> void:
 		print("TEST FAIL: big fitting accepted the small wrench (wrong_uses=%d)" % wrong_uses[0])
 		quit(1)
 		return
-	# The Brass Wrench the clock released is the big one.
+	# The Brass Wrench the puzzle box released is the big one.
 	player.teleport(wrench.global_position + Vector3(0, 0, 1.0))
 	for i in 10:
 		await physics_frame

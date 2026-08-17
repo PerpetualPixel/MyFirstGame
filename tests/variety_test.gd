@@ -1,8 +1,8 @@
 extends SceneTree
 ## Run-variety regression: generates the mansion under several fixed seeds
 ## and asserts (a) layouts genuinely differ across seeds — routes, valve
-## rooms, gear hiding spots — and (b) the same seed reproduces the exact
-## same layout (determinism).
+## rooms, puzzle box location — and (b) the same seed reproduces the
+## exact same layout (determinism).
 ## Run: godot --headless --path . --script res://tests/variety_test.gd
 
 const SEEDS := [11, 22, 33, 44, 55, 66]
@@ -27,18 +27,16 @@ func _run() -> void:
 
 	var routes := {}
 	var valves := {}
-	var gears := {}
-	var clocks := {}
+	var boxes := {}
 	var decoys := {}
 	for s in snapshots:
 		routes[s["route"]] = true
 		valves[str(s["valves"])] = true
-		gears[str(s["gears"])] = true
-		clocks[str(s["clock"])] = true
+		boxes[str(s["puzzle_box"])] = true
 		decoys[str(s["decoy"])] = true
-	print("distinct across %d seeds: routes=%d valve_pairs=%d gear_sets=%d clocks=%d decoys=%d" % [
-		SEEDS.size(), routes.size(), valves.size(), gears.size(), clocks.size(), decoys.size()])
-	if routes.size() < 2 or valves.size() < 2 or gears.size() < 2:
+	print("distinct across %d seeds: routes=%d valve_pairs=%d puzzle_box_spots=%d decoys=%d" % [
+		SEEDS.size(), routes.size(), valves.size(), boxes.size(), decoys.size()])
+	if routes.size() < 2 or valves.size() < 2 or boxes.size() < 2:
 		print("TEST FAIL: insufficient layout variety across seeds")
 		quit(1)
 		return
@@ -55,8 +53,7 @@ func _generate_snapshot(seed_value: int) -> Dictionary:
 	var snapshot := {
 		"route": gen.active_route["name"],
 		"valves": str(gen._valve_cells),
-		"clock": str(gen._clock_cell),
-		"gears": str(gen._gear_cells),
+		"puzzle_box": str(gen._puzzle_box_cell),
 		"decoy": str(gen._decoy_cell),
 		"door_count": gen._doors.size(),
 	}
