@@ -6,6 +6,9 @@ extends Interactable
 ## on every co-op peer, so both explorers learn what it says.
 
 @export var note_text := "An empty page."
+## Interaction prompt — the estate ledger and the inventor's lore notes
+## read differently.
+@export var prompt := "[E] Take Notebook"
 
 var taken := false
 
@@ -15,7 +18,7 @@ func can_interact(_by: Node3D) -> bool:
 
 
 func get_prompt(_by: Node3D = null) -> String:
-	return "[E] Take Notebook"
+	return prompt
 
 
 func interact(by: Node3D) -> void:

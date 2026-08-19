@@ -113,7 +113,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif not get_tree().paused:
 		# If the tree is paused and it wasn't us, someone else (minigame,
-		# end screen) owns the pause — don't stack the menu on top.
+		# end screen) owns the pause — don't stack the menu on top. The
+		# victory cinematic runs UNpaused (the character must keep
+		# animating), and in co-op NEITHER end state pauses — so the
+		# finished run needs its own guard, or ESC stacks this menu
+		# on top of the rank card or the defeat screen.
+		var gm: GameManager = get_node_or_null("../GameManager")
+		if gm != null and (gm.state == GameManager.State.WON or gm.state == GameManager.State.LOST):
+			return
 		open_menu()
 		get_viewport().set_input_as_handled()
 

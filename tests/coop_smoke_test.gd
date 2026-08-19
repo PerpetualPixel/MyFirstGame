@@ -53,8 +53,20 @@ func _run() -> void:
 	await physics_frame
 	if twin.active_route["name"] != gen.active_route["name"] \
 			or str(twin._valve_cells) != str(gen._valve_cells) \
-			or str(twin._puzzle_box_cell) != str(gen._puzzle_box_cell):
+			or str(twin._puzzle_box_cell) != str(gen._puzzle_box_cell) \
+			or str(twin._lockbox_code) != str(gen._lockbox_code) \
+			or str(twin._crowbar_spot) != str(gen._crowbar_spot):
 		print("TEST FAIL: shared seed did not reproduce the layout")
+		quit(1)
+		return
+	# The puzzle box's secret sequence is the whole point of
+	# shuffle_seed: without it each peer engraves a different
+	# combination while their dial inputs replicate.
+	var box_a: PuzzleBox = _find_all(main, "PuzzleBox")[0]
+	var box_b: PuzzleBox = _find_all(twin, "PuzzleBox")[0]
+	if box_a.shuffle_seed == 0 or str(box_a.active_target_sequence) != str(box_b.active_target_sequence):
+		print("TEST FAIL: puzzle box sequence differs across peers (%s vs %s)" % [
+			box_a.active_target_sequence, box_b.active_target_sequence])
 		quit(1)
 		return
 	twin.queue_free()

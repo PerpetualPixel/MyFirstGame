@@ -37,6 +37,9 @@ const SYMBOL_GLYPHS := {"sun": "☉", "moon": "☾", "star": "★", "sparkle": "
 ## Mechanical advance delay: touching the dial before the gears finish
 ## settling from the last lever pull fails the whole attempt.
 @export var cadence_window_sec: float = 0.7
+## Seed for the secret-sequence shuffle, assigned by the generator from
+## the shared run RNG before add_child; 0 = roll from the global RNG.
+@export var shuffle_seed: int = 0
 
 ## Built at _ready(): [s0, ADVANCE, s1, ADVANCE, s2, ADVANCE].
 var active_target_sequence: Array = []
@@ -91,9 +94,15 @@ func stash_item(item: Node3D) -> void:
 
 
 func _initialize_combination() -> void:
+	# Seeded by the generator (before add_child) so every co-op peer rolls
+	# the SAME secret sequence — the global RNG would give each machine a
+	# different combination while their inputs replicate. 0 falls back to
+	# a process-random roll for bare boxes spawned by tests.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = shuffle_seed if shuffle_seed != 0 else randi()
 	var pool := SYMBOLS.duplicate()
 	for i in range(pool.size() - 1, 0, -1):
-		var j := randi() % (i + 1)
+		var j := rng.randi_range(0, i)
 		var tmp: String = pool[i]
 		pool[i] = pool[j]
 		pool[j] = tmp

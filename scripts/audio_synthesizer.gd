@@ -39,6 +39,8 @@ func _ready() -> void:
 	_streams["laser_hum"] = _gen_laser_hum()
 	_streams["rumble"] = _gen_rumble()
 	_streams["whoosh"] = _gen_whoosh()
+	_streams["radio"] = _gen_radio_blip()
+	_streams["fanfare"] = _gen_fanfare()
 	# Item handling foley: what each material does in the hand and on the
 	# floor (hard) or the lawn (soft, muffled).
 	_streams["pickup_metal"] = _gen_pickup_metal()
@@ -208,6 +210,46 @@ static func _gen_power_up() -> AudioStreamWAV:
 		var swell := minf(t / 0.5, 1.0) * exp(-maxf(t - 1.1, 0.0) * 7.0)
 		var sparkle := (randf() * 2.0 - 1.0) * 0.04 * swell
 		s[i] = (v * swell + sparkle) * 0.8
+	return _make_wav(s)
+
+
+## Shortwave chirp: two quick filtered blips with a breath of static,
+## announcing a radio transmission (the subtitle bar's attention cue).
+static func _gen_radio_blip() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 0.32)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var lp := 0.0
+	for i in n:
+		var t := float(i) / SAMPLE_RATE
+		var lt := t if t < 0.14 else t - 0.14
+		var f := 1150.0 if t < 0.14 else 1520.0
+		var blip := sin(TAU * f * lt) * exp(-lt * 34.0) * 0.34
+		lp += 0.3 * ((randf() * 2.0 - 1.0) - lp)
+		s[i] = blip + lp * 0.05 * exp(-t * 6.0)
+	return _make_wav(s)
+
+
+## Victory fanfare: four ascending bell-brass notes (C-E-G-C), the last
+## one ringing out under the rank screen.
+static func _gen_fanfare() -> AudioStreamWAV:
+	var n := int(SAMPLE_RATE * 2.2)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var notes := [262.0, 330.0, 392.0, 523.0]
+	for k in notes.size():
+		var start := int(SAMPLE_RATE * 0.22 * k)
+		var f: float = notes[k]
+		var last := k == notes.size() - 1
+		for i in n - start:
+			var t := float(i) / SAMPLE_RATE
+			var v := sin(TAU * f * t) * 0.3
+			v += sin(TAU * f * 2.0 * t) * 0.12 * exp(-t * 2.2)
+			v += sin(TAU * f * 3.01 * t) * 0.05 * exp(-t * 3.2)
+			var env := minf(t / 0.02, 1.0) * exp(-t * (1.1 if last else 2.8))
+			s[start + i] += v * env * 0.8
+	for i in n:
+		s[i] = clampf(s[i], -0.95, 0.95)
 	return _make_wav(s)
 
 

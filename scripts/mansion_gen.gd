@@ -37,6 +37,7 @@ const KEYPAD_SCENE := preload("res://scenes/Puzzles/Keypad.tscn")
 const NOTEBOOK_SCENE := preload("res://scenes/NotebookPickup.tscn")
 const GARAGE_BUTTON_SCRIPT := preload("res://scripts/puzzles/garage_door_button.gd")
 const PUZZLE_BOX_SCRIPT := preload("res://scripts/puzzles/puzzle_box.gd")
+const LOCK_BOX_SCRIPT := preload("res://scripts/puzzles/lock_box.gd")
 const PRISM_SCENE := preload("res://scenes/Prism.tscn")
 
 ## Three hand-authored, guaranteed-solvable laser routes; one is drawn per
@@ -136,7 +137,22 @@ var _mirror_parking: Array[Vector3] = []
 var _loose_prisms: Array[Vector3] = []
 ## Room the puzzle box was placed in this run (read by tests and props).
 var _puzzle_box_cell := Vector2i(1, 1)
+## The puzzle box's exact world spot (its wall slot is seeded too);
+## _spawn_props reads it instead of re-deriving the offset.
+var _puzzle_box_pos := Vector3.ZERO
 var _decoy_cell := Vector2i(2, 1)
+## The vault strongbox's 3-digit combination this run; each digit is
+## revealed into the notes by mastering one machine.
+var _lockbox_code: Array[int] = []
+## Floor spots holding the inventor's lore notes (and their little
+## stands); furniture keeps clear of them.
+var _lore_spots: Array[Vector3] = []
+## The seeded pick each garage-area item landed on this run (read by the
+## variety/co-op tests to prove layouts differ and replicate).
+var _crowbar_spot := Vector3.ZERO
+var _fuse_b_spot := Vector3.ZERO
+var _small_wrench_spot := Vector3.ZERO
+var _notebook_spot := Vector3.ZERO
 var _keypad: Keypad
 var _garage_button: GarageDoorButton
 var _garage_lock_lamp: OmniLight3D
@@ -207,6 +223,7 @@ func generate() -> void:
 	# hold anything.
 	_mirror_parking.clear()
 	_loose_prisms.clear()
+	_lore_spots.clear()
 	PlayerNotes.clear()  # fresh run, fresh notebook
 
 	var chosen_seed := generation_seed
@@ -275,6 +292,10 @@ func _pick_run_layout() -> void:
 			# room center it can swallow the beam before the real mirrors.
 			return not cell in route_cells and not _near_beam_path(get_room_center(cell)))
 	_decoy_cell = decoy_options[_rng.randi_range(0, decoy_options.size() - 1)]
+
+	# The vault strongbox's combination: one digit per machine (safe,
+	# astronomical box, hydraulic press), revealed as each is mastered.
+	_lockbox_code = [_rng.randi_range(0, 9), _rng.randi_range(0, 9), _rng.randi_range(0, 9)]
 
 
 ## Distinct grid cells an active route's beam actually travels through:
@@ -624,23 +645,105 @@ func _spawn_puzzle() -> void:
 	var puzzle_box = StaticBody3D.new()
 	puzzle_box.name = "PuzzleBox"
 	puzzle_box.set_script(PUZZLE_BOX_SCRIPT)
-	puzzle_box.position = get_room_center(_puzzle_box_cell) + Vector3(-3.0, 0, room_size / 2.0 - wall_thickness / 2.0 - 0.4)
+	# Its wall slot is seeded too: either end of the south wall, never the
+	# x -1..1 door gap.
+	var box_x: float = [-3.0, 3.0][_rng.randi_range(0, 1)]
+	_puzzle_box_pos = get_room_center(_puzzle_box_cell) + Vector3(box_x, 0, room_size / 2.0 - wall_thickness / 2.0 - 0.4)
+	puzzle_box.position = _puzzle_box_pos
 	puzzle_box.rotation.y = PI
+	# Seed the secret sequence from the run RNG so every co-op peer rolls
+	# the SAME symbols (the box's own fallback uses the global RNG).
+	puzzle_box.shuffle_seed = _rng.randi()
 	_generated_root.add_child(puzzle_box)
 	reserved.append(puzzle_box.position)
 	var wrench := BRASS_WRENCH_SCENE.instantiate() as Grabbable
 	wrench.name = "Wrench"
 	puzzle_box.stash_item(wrench)
 
+	# The inventor's notes stand at fixed spots beside their machines.
+	# Work them out and reserve them BEFORE the mirrors park, or a
+	# hauled table (or the free decoy) can be seated straight through
+	# a reading stand — _pick_perimeter_spot only avoids `reserved`.
+	var lore_notes := _plan_lore_notes()
+	for entry in lore_notes:
+		reserved.append(entry[2])
+
 	_spawn_mirrors(reserved)
 
+	# The will waits inside the vault strongbox on the old pedestal; the
+	# three machines above each reveal one dial digit as they're mastered.
 	_build_pedestal(get_room_center(VAULT_STUDY_CELL))
+	var lock_box = StaticBody3D.new()
+	lock_box.name = "Strongbox"
+	lock_box.set_script(LOCK_BOX_SCRIPT)
+	lock_box.combination = _lockbox_code
+	lock_box.position = get_room_center(VAULT_STUDY_CELL) + Vector3(0, 0.9, 0)
+	_generated_root.add_child(lock_box)
 	var will := WILL_ITEM_SCENE.instantiate() as Node3D
 	will.name = "Will"
-	will.position = get_room_center(VAULT_STUDY_CELL) + Vector3(0, 1.05, 0)
-	_generated_root.add_child(will)
+	lock_box.stash_item(will)
 
+	safe.puzzle_completed.connect(_reveal_lockbox_digit.bind(0, "the wall safe"))
+	puzzle_box.puzzle_unlocked.connect(_reveal_lockbox_digit.bind(1, "the astronomical box"))
+	machine.puzzle_solved.connect(_reveal_lockbox_digit.bind(2, "the hydraulic press"))
+
+	_spawn_lore_notes(lore_notes)
 	_build_exit_zone()
+
+
+## A mastered machine gives up its strongbox digit: logged straight into
+## the [Tab] notes on every peer (puzzle completions replicate, so each
+## machine writes the same page everywhere).
+func _reveal_lockbox_digit(index: int, source: String) -> void:
+	var numerals := ["I", "II", "III"]
+	PlayerNotes.add("Strongbox dial %s — %s gave up its number: %d" % [
+		numerals[index], source, _lockbox_code[index]])
+	AudioSynthesizer.play_ui("tick", -12.0, 1.3)
+
+
+## The late inventor's musings, each on a little reading stand beside the
+## machine it muses about (the garage power note sits on its own crate,
+## spawned with the garage). Positions dodge the door lanes (x/z 0) and
+## the corner beam spots.
+## Where each of the inventor's notes will stand, as
+## [node_name, text, world_spot]. Computed before the mirrors park so
+## their spots can be reserved; nothing is built until
+## _spawn_lore_notes() runs.
+func _plan_lore_notes() -> Array:
+	var safe_pos: Vector3 = active_route["safe"]
+	var box_side := signf(_puzzle_box_pos.x - get_room_center(_puzzle_box_cell).x)
+	return [
+		# Beside the wall safe's base, toward the room.
+		["LoreNote_Light", Story.LORE_LIGHT,
+			Vector3(safe_pos.x, 0, safe_pos.z + 0.75)],
+		# Tucked between the puzzle box and its wall corner.
+		["LoreNote_Time", Story.LORE_TIME,
+			get_room_center(_puzzle_box_cell) + Vector3(box_side * 4.35, 0, 4.4)],
+		# West of the press console on the machinery room's north wall.
+		["LoreNote_Pressure", Story.LORE_PRESSURE,
+			get_room_center(_valve_cells[0]) + Vector3(-1.6, 0, -4.3)],
+		# In the vault, beside the pedestal.
+		["LoreNote_Family", Story.LORE_FAMILY,
+			get_room_center(VAULT_STUDY_CELL) + Vector3(1.5, 0, 1.5)],
+	]
+
+
+func _spawn_lore_notes(planned: Array) -> void:
+	for entry in planned:
+		_spawn_lore_note(entry[0], entry[1], entry[2])
+
+
+func _spawn_lore_note(node_name: String, text: String, at: Vector3) -> void:
+	# A small dark reading stand so the page never lies on bare floor.
+	_add_prop(at + Vector3(0, 0.15, 0), Vector3(0.42, 0.3, 0.36), _shelf_material)
+	var note := NOTEBOOK_SCENE.instantiate() as NotebookPickup
+	note.name = node_name
+	note.position = at + Vector3(0, 0.32, 0)
+	note.rotation.y = _rng.randf_range(0.0, TAU)
+	note.note_text = text
+	note.prompt = "[E] Read the Inventor's Note"
+	_generated_root.add_child(note)
+	_lore_spots.append(at)
 
 
 ## Room-local wall spots a standing mirror can be parked at: hugging each
@@ -753,9 +856,15 @@ func _seat_new_prism(table: PrismTable, node_name: String) -> void:
 	table.seat_prism(prism)
 
 
-## Loose prism spot: a seeded room (never the vault), on the floor beside
-## the south door's far jamb — clear of the swing, the corner tables, the
-## wall pieces, and anything reserved.
+## Loose prism spot: a seeded room (never the vault) AND a seeded
+## wall-hugging offset within it — clear of the door lanes (x/z 0), the
+## corner tables, the wall pieces, and anything reserved.
+const PRISM_SCATTER_OFFSETS: Array[Vector3] = [
+	Vector3(1.5, 0.15, 3.55), Vector3(-1.5, 0.15, 3.55),
+	Vector3(3.55, 0.15, -1.5), Vector3(-3.55, 0.15, 1.5),
+]
+
+
 func _scatter_prism(node_name: String, reserved: Array[Vector3]) -> void:
 	var options: Array[Vector2i] = []
 	for z in GRID_SIZE.y:
@@ -766,7 +875,8 @@ func _scatter_prism(node_name: String, reserved: Array[Vector3]) -> void:
 	var at := Vector3.ZERO
 	for attempt in 12:
 		var cell: Vector2i = options[_rng.randi_range(0, options.size() - 1)]
-		var candidate := get_room_center(cell) + Vector3(1.5, 0.15, 3.55)
+		var offset: Vector3 = PRISM_SCATTER_OFFSETS[_rng.randi_range(0, PRISM_SCATTER_OFFSETS.size() - 1)]
+		var candidate := get_room_center(cell) + offset
 		var clear := true
 		for r in reserved:
 			if Vector2(candidate.x - r.x, candidate.z - r.z).length() < 1.4:
@@ -972,7 +1082,8 @@ func _spawn_props() -> void:
 	var blocked: Array[Vector3] = []
 	blocked.append_array(_mirror_parking)
 	blocked.append_array(_loose_prisms)
-	blocked.append(get_room_center(_puzzle_box_cell) + Vector3(-3.0, 0, 4.45))
+	blocked.append_array(_lore_spots)
+	blocked.append(_puzzle_box_pos)
 	if not _valve_cells.is_empty():
 		var press_room := get_room_center(_valve_cells[0])
 		blocked.append(press_room + Vector3(1.3, 0, -4.35))       # console
@@ -1587,8 +1698,11 @@ func _spawn_garage() -> void:
 		Vector3(27.5, 0.25, 21.1),   # leaning on the junk car's flank
 		Vector3(27.6, 0.83, 25.9),   # atop the south-arm crate
 		Vector3(7.85, 0.52, 29.75),  # atop the roadster's toolbox crate
+		c + Vector3(-2.6, 0.1, -1.5),  # on the floor under the workbench
+		Vector3(28.0, 0.85, 17.4),   # atop the north-end junk crate
 	]
-	crowbar.position = crowbar_spots[_rng.randi_range(0, crowbar_spots.size() - 1)]
+	_crowbar_spot = crowbar_spots[_rng.randi_range(0, crowbar_spots.size() - 1)]
+	crowbar.position = _crowbar_spot
 	crowbar.rotation.y = _rng.randf_range(0.0, TAU)
 	_generated_root.add_child(crowbar)
 
@@ -1600,37 +1714,56 @@ func _spawn_garage() -> void:
 		c + Vector3(2.5, 0.85, 1.7),     # on the crate
 		c + Vector3(2.4, 0.1, -1.6),     # floor by the cradle
 		c + Vector3(-0.7, 0.1, 2.3),     # floor by the rolling door
+		c + Vector3(-4.35, 0.12, 0.8),   # on the side-door patio pad
+		Vector3(27.7, 0.92, 16.9),       # on the second bin's lid
 	]
-	garage_fuse.position = fuse_spots[_rng.randi_range(0, fuse_spots.size() - 1)]
+	_fuse_b_spot = fuse_spots[_rng.randi_range(0, fuse_spots.size() - 1)]
+	garage_fuse.position = _fuse_b_spot
 	_generated_root.add_child(garage_fuse)
 
 	# The Small Wrench — first phase of the hydraulic press — lives in the
-	# workshop, at one of several seeded spots around the bench.
+	# workshop, at one of several seeded spots around the bench (or out on
+	# the junk car's hood).
 	var small_wrench := SMALL_WRENCH_SCENE.instantiate() as Grabbable
 	small_wrench.name = "SmallWrench"
 	var small_wrench_spots: Array[Vector3] = [
 		c + Vector3(-2.4, 0.95, -2.4),   # west end of the workbench
 		c + Vector3(-0.8, 0.95, -2.5),   # east end of the workbench
 		c + Vector3(1.2, 0.1, -2.2),     # floor between bench and crate
+		Vector3(27.7, 1.02, 19.55),      # on the junk car's hood
 	]
-	small_wrench.position = small_wrench_spots[_rng.randi_range(0, small_wrench_spots.size() - 1)]
+	_small_wrench_spot = small_wrench_spots[_rng.randi_range(0, small_wrench_spots.size() - 1)]
+	small_wrench.position = _small_wrench_spot
 	small_wrench.rotation.y = _rng.randf_range(0.0, TAU)
 	_generated_root.add_child(small_wrench)
 
 	# Ledger notebook — it records the door code. Every spot rests on (or
-	# tucked directly beside) a specific prop: junk-lot bins/crate, or
-	# the porch firewood stack out front.
+	# tucked directly beside) a specific prop: junk-lot bins/crate/car,
+	# the garage patio pad, or the porch firewood stack out front.
 	var notebook := NOTEBOOK_SCENE.instantiate() as NotebookPickup
 	notebook.name = "Notebook"
 	var notebook_spots: Array[Vector3] = [
 		Vector3(26.7, 0.92, 16.8),   # on a bin lid at the U's north end
 		Vector3(27.9, 0.82, 25.9),   # atop the south-arm crate
 		Vector3(5.2, 0.42, 23.3),    # resting on the porch firewood stack
+		c + Vector3(-4.5, 0.13, -0.7),  # on the patio pad by the side door
+		Vector3(27.85, 1.32, 20.95),    # on the junk car's cabin roof
 	]
-	notebook.position = notebook_spots[_rng.randi_range(0, notebook_spots.size() - 1)]
+	_notebook_spot = notebook_spots[_rng.randi_range(0, notebook_spots.size() - 1)]
+	notebook.position = _notebook_spot
 	notebook.rotation.y = _rng.randf_range(0.0, TAU)
 	notebook.note_text = "Estate ledger — front door code: %04d" % front_door_pin
 	_generated_root.add_child(notebook)
+
+	# The inventor's "On Power" note, on a crate beside the breaker box.
+	_add_prop(c + Vector3(1.0, 0.22, -2.6), Vector3(0.45, 0.45, 0.45), _crate_material)
+	var power_note := NOTEBOOK_SCENE.instantiate() as NotebookPickup
+	power_note.name = "LoreNote_Power"
+	power_note.position = c + Vector3(1.0, 0.47, -2.6)
+	power_note.rotation.y = _rng.randf_range(0.0, TAU)
+	power_note.note_text = Story.LORE_POWER
+	power_note.prompt = "[E] Read the Inventor's Note"
+	_generated_root.add_child(power_note)
 
 
 ## The fuse panel came back online: wake the keypad and garage button,

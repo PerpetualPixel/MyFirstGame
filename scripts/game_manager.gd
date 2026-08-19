@@ -2,12 +2,15 @@ class_name GameManager
 extends Node
 
 ## Runs the game loop. PREGAME on the porch with the timer frozen at 4:00;
-## powering the breaker starts PLAYING. Win: carry the Will into the porch
-## exit zone. Loss: timer hits zero. In co-op the HOST owns the countdown
-## and win/loss verdicts and replicates them; each peer's HUD objectives
-## update from locally-replicated puzzle events. Also drives the countdown
-## tension layer (amber/red timer, heartbeat, vignette pulse), milestone
-## banners, and the off-screen partner tracker.
+## powering the breaker starts PLAYING. Win: crack the vault strongbox,
+## then carry the Will into the porch exit zone — which cuts to a short
+## victory cinematic (cinematic camera on the idle character) and an
+## RE-style S/A/B/C/D rank screen graded on elapsed time. Loss: timer
+## hits zero. In co-op the HOST owns the countdown and win/loss verdicts
+## and replicates them; each peer's HUD objectives update from
+## locally-replicated puzzle events. Also drives the countdown tension
+## layer (amber/red timer, heartbeat, vignette pulse), milestone banners,
+## Mrs. Puddle's event radio lines, and the off-screen partner tracker.
 
 enum State { PREGAME, PLAYING, WON, LOST }
 
@@ -17,16 +20,21 @@ enum State { PREGAME, PLAYING, WON, LOST }
 @export var run_time: float = 240.0
 
 @onready var _mansion: MansionGenerator = $"../MansionGenerator"
+@onready var _hud: HUD = $"../HUD"
 @onready var _timer_label: Label = $"../HUD/TimerLabel"
 @onready var _obj_breaker: Label = $"../HUD/Objectives/BreakerObjective"
 @onready var _obj_clock: Label = $"../HUD/Objectives/ClockObjective"  # now the puzzle box
 @onready var _obj_wrench: Label = $"../HUD/Objectives/WrenchObjective"
 @onready var _obj_steam: Label = $"../HUD/Objectives/SteamObjective"
 @onready var _obj_light: Label = $"../HUD/Objectives/LightObjective"
+@onready var _obj_strongbox: Label = $"../HUD/Objectives/StrongboxObjective"
 @onready var _obj_will: Label = $"../HUD/Objectives/WillObjective"
 @onready var _end_screen: Control = $"../HUD/EndScreen"
 @onready var _end_title: Label = $"../HUD/EndScreen/Center/VBox/Title"
+@onready var _end_rank: Label = $"../HUD/EndScreen/Center/VBox/Rank"
+@onready var _end_flavor: Label = $"../HUD/EndScreen/Center/VBox/Flavor"
 @onready var _end_subtitle: Label = $"../HUD/EndScreen/Center/VBox/Subtitle"
+@onready var _end_dim: ColorRect = $"../HUD/EndScreen/Dim"
 @onready var _banner: Label = $"../HUD/Banner"
 @onready var _partner_arrow: Label = $"../HUD/PartnerArrow"
 @onready var _vignette: ColorRect = $"../HUD/Vignette"
@@ -40,6 +48,9 @@ var _small_wrench_found := false
 var _big_wrench_found := false
 var _light_done := false
 var _pressure_done := false
+var _lockbox_done := false
+var _warned_last_minute := false
+var _cine_cam: Camera3D
 var _exit_zones: Array = []
 var _last_timer_text := ""
 var _local_player: Player
@@ -65,8 +76,12 @@ func _ready() -> void:
 		wrench.grabbed.connect(_on_big_wrench_grabbed)
 	for box in get_tree().get_nodes_in_group("puzzle_boxes"):
 		box.puzzle_unlocked.connect(_on_puzzle_box_unlocked)
+	for lockbox in get_tree().get_nodes_in_group("lock_boxes"):
+		lockbox.unlocked.connect(_on_lockbox_unlocked)
 	for vault in get_tree().get_nodes_in_group("vault_doors"):
-		vault.opened.connect(func() -> void: show_banner("VAULT GATE UNLOCKED!"))
+		vault.opened.connect(func() -> void:
+			show_banner("VAULT GATE UNLOCKED!")
+			_hud.say(Story.RADIO["vault"]))
 	for will in get_tree().get_nodes_in_group("will_items"):
 		will.grabbed.connect(_on_will_grabbed)
 	for press in get_tree().get_nodes_in_group("pressure_puzzles"):
@@ -78,6 +93,8 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if state == State.WON or state == State.LOST:
+		return  # end chrome owns the screen (and the victory cinematic the camera)
 	_update_partner_arrow()
 	if state != State.PLAYING or get_tree().paused:
 		return
@@ -115,6 +132,9 @@ func _net_time(t: float) -> void:
 func _update_tension(delta: float) -> void:
 	if time_left > 60.0:
 		return
+	if not _warned_last_minute:
+		_warned_last_minute = true
+		_hud.say(Story.RADIO["last_minute"])
 	_pulse_time += delta
 	var urgent := time_left <= 30.0
 	var pulse := 0.5 + 0.5 * sin(_pulse_time * (10.0 if urgent else 6.0))
@@ -220,6 +240,7 @@ func _on_breaker_powered() -> void:
 	if state == State.PREGAME:
 		state = State.PLAYING
 	show_banner("MANSION POWER RESTORED!")
+	_hud.say(Story.RADIO["power"])
 	_refresh_objectives()
 
 
@@ -235,22 +256,33 @@ func _on_big_wrench_grabbed(_by: Node3D) -> void:
 
 func _on_will_grabbed(_by: Node3D) -> void:
 	show_banner("THE WILL SECURED — ESCAPE TO THE PORCH!")
+	_hud.say(Story.RADIO["will"])
 
 
 func _on_puzzle_box_unlocked() -> void:
 	_puzzle_box_done = true
 	show_banner("THE PUZZLE BOX UNLOCKS!")
+	_hud.say(Story.RADIO["puzzle_box"])
+	_refresh_objectives()
+
+
+func _on_lockbox_unlocked() -> void:
+	_lockbox_done = true
+	show_banner("THE STRONGBOX OPENS!")
+	_hud.say(Story.RADIO["strongbox"])
 	_refresh_objectives()
 
 
 func _on_light_puzzle_solved() -> void:
 	_light_done = true
+	_hud.say(Story.RADIO["safe"])
 	_refresh_objectives()
 
 
 func _on_pressure_solved() -> void:
 	_pressure_done = true
 	show_banner("HYDRAULIC PRESSURE BALANCED!")
+	_hud.say(Story.RADIO["pressure"])
 	_refresh_objectives()
 
 
@@ -297,22 +329,113 @@ func _win(elapsed: float) -> void:
 		return
 	state = State.WON
 	_refresh_objectives()
-	_end_title.text = "Inheritance Secured!"
-	_end_subtitle.text = "Completed in %s — Press [R] to restart" % _format_time(elapsed)
+	_begin_victory_sequence(elapsed)
+
+
+## RE-style finish. The tree is deliberately NOT paused (that would
+## freeze the character's AnimationPlayer): input is locked instead, a
+## perspective cinematic camera pushes in on the idling character, the
+## fanfare plays, and after a beat the rank screen fades over the shot.
+## Runs per-machine (each peer frames its own local character).
+func _begin_victory_sequence(elapsed: float) -> void:
+	_close_open_modals()
+	_timer_label.visible = false
+	_partner_arrow.visible = false
+	_vignette.visible = false
+	if _banner_tween:
+		_banner_tween.kill()
+	_banner.modulate.a = 0.0
+	_hud.hide_gameplay_chrome()
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_local_player():
+			p.ui_locked = true
+			p.set("_trauma", 0.0)
+	AudioSynthesizer.play_ui("fanfare", -4.0)
+	var me := _get_local_player()
+	if me != null:
+		_cine_cam = Camera3D.new()
+		_cine_cam.fov = 38.0
+		add_child(_cine_cam)
+		# The body's forward is -Z: frame the shot from where the character
+		# faces, slightly above eye height, easing in slowly.
+		var face: Vector3 = -me.global_transform.basis.z
+		var focus: Vector3 = me.global_position + Vector3(0, 1.25, 0)
+		var from: Vector3 = me.global_position + face * 3.6 + Vector3(0, 1.8, 0)
+		var to: Vector3 = me.global_position + face * 2.3 + Vector3(0, 1.45, 0)
+		_cine_cam.global_position = from
+		_cine_cam.look_at(focus)
+		_cine_cam.current = true
+		var tween := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tween.tween_method(func(t: float) -> void:
+			if not is_instance_valid(_cine_cam):
+				return
+			_cine_cam.global_position = from.lerp(to, t)
+			_cine_cam.look_at(focus), 0.0, 1.0, 6.0)
+	await get_tree().create_timer(1.4).timeout
+	if state != State.WON:
+		return
+	_show_victory_screen(elapsed)
+
+
+func _show_victory_screen(elapsed: float) -> void:
+	_hud.end_run_chrome()
+	var rank := Story.rank_for(elapsed)
+	_end_title.text = "THE WILL IS YOURS"
+	_end_rank.text = str(rank["letter"])
+	_end_rank.modulate = rank["color"]
+	_end_rank.visible = true
+	_end_flavor.text = str(rank["flavor"])
+	_end_flavor.visible = true
+	_end_subtitle.text = "Sole heir of the Gearhart estate — %s — Press [R] to restart" % _format_time(elapsed)
+	# Lighter dim than defeat: the character stays visible mid-frame.
+	_end_dim.color.a = 0.45
 	_end_screen.visible = true
-	if not NetworkSession.multiplayer_active:
-		get_tree().paused = true
 
 
 func _lose() -> void:
 	if state != State.PLAYING:
 		return
 	state = State.LOST
+	_close_open_modals()
+	_hud.end_run_chrome()
 	_end_title.text = "Mansion Sealed Forever!"
-	_end_subtitle.text = "The mansion's locks click shut. Press [R] to restart"
+	_end_rank.visible = false
+	_end_flavor.visible = false
+	_end_dim.color.a = 0.78
+	_end_subtitle.text = "“Suits at the door. We're done here.” — Press [R] to restart"
 	_end_screen.visible = true
 	if not NetworkSession.multiplayer_active:
 		get_tree().paused = true
+
+
+## A verdict can land while someone sits inside a minigame overlay:
+## co-op never pauses the tree, and the victory cinematic no longer
+## pauses it in solo either. Those overlays are CanvasLayers at layer
+## 10 and would bury the end screen (HUD is layer 1) — worse, closing
+## one afterwards runs _set_local_lock(false) and hands movement back
+## mid-cinematic. Shut them all before the end chrome goes up.
+func _close_open_modals() -> void:
+	for node in get_tree().get_nodes_in_group("modal_ui").duplicate():
+		if not is_instance_valid(node):
+			continue
+		if not _try_close_modal(node):
+			_try_close_modal(node.get_parent())
+
+
+## Panels are reached either directly (the panel node carries the
+## script) or through their owning Interactable, and each generation
+## of them named its closer differently.
+func _try_close_modal(n: Node) -> bool:
+	if n == null or not is_instance_valid(n):
+		return false
+	if n is EmoteWheel:
+		(n as EmoteWheel).close(false)
+		return true
+	for method in ["_close_panel", "_close_ui", "close"]:
+		if n.has_method(method):
+			n.call(method)
+			return true
+	return false
 
 
 func _refresh_objectives() -> void:
@@ -330,7 +453,9 @@ func _refresh_objectives() -> void:
 	_obj_steam.modulate = done_color if _pressure_done else Color.WHITE
 	_obj_light.text = "%s Aim the Laser at the Wall Safe" % _checkbox(_light_done)
 	_obj_light.modulate = done_color if _light_done else Color.WHITE
-	_obj_will.text = "%s Retrieve Will & Escape" % _checkbox(will_ok)
+	_obj_strongbox.text = "%s Open the Vault Strongbox" % _checkbox(_lockbox_done)
+	_obj_strongbox.modulate = done_color if _lockbox_done else Color.WHITE
+	_obj_will.text = "%s Escape with the Will" % _checkbox(will_ok)
 	_obj_will.modulate = done_color if will_ok else Color.WHITE
 
 

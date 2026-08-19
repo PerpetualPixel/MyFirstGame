@@ -1,15 +1,17 @@
 extends SceneTree
 ## Headless end-to-end test of the deepened game loop:
-## crowbar/toy-crate gating -> two-fuse breaker (powers keypad, starts
-## timer) -> keypad PIN opens the front doors (code from the junk-lot
-## notebook) -> free-angle mirror swivel & detent snap -> puzzle box
-## dial-and-lever combination (wrong symbol or mistimed input resets it,
-## the engraved sequence unlocks it and releases the Brass Wrench) ->
-## hydraulic press (fittings sequenced behind the Small/Brass wrenches,
-## then five signed-PSI toggle valves matched to a target) -> the
-## pressure lock frees the Heavy Battery -> laser maze (every prism
-## table required, spans >= 2 rooms) -> Will to the porch exit -> WIN.
-## Plus pause menu checks.
+## intro letter -> crowbar/toy-crate gating -> two-fuse breaker (powers
+## keypad, starts timer) -> keypad PIN opens the front doors (code from
+## the junk-lot notebook) -> free-angle mirror swivel & detent snap ->
+## puzzle box dial-and-lever combination (wrong symbol or mistimed input
+## resets it, the engraved sequence unlocks it and releases the Brass
+## Wrench) -> hydraulic press (fittings sequenced behind the Small/Brass
+## wrenches, then five signed-PSI toggle valves matched to a target) ->
+## the pressure lock frees the Heavy Battery -> laser maze (every prism
+## table required, spans >= 2 rooms) -> each mastered machine reveals a
+## strongbox digit into the notes -> the vault strongbox's dials free
+## the Will -> porch exit -> victory cinematic + S rank. Plus pause
+## menu and lore-note checks.
 ## Run: godot --headless --path . --script res://tests/game_loop_test.gd
 
 func _initialize() -> void:
@@ -27,9 +29,21 @@ func _run() -> void:
 	for i in 30:
 		await physics_frame
 
+	# The intro letter opens the run; dismissing it hands over control
+	# and queues Mrs. Puddle's radio check.
+	var hud: HUD = main.get_node("HUD")
+	if not hud._intro_open:
+		print("TEST FAIL: intro letter did not show at run start")
+		quit(1)
+		return
+	hud.dismiss_intro()
+	if hud._intro_open:
+		print("TEST FAIL: intro letter did not dismiss")
+		quit(1)
+		return
+
 	# Every pickup has a HUD icon that loads, and every handling foley
 	# sample was synthesized.
-	var hud: Node = main.get_node("HUD")
 	for group in hud.ITEM_ICONS:
 		var tex: Texture2D = load(hud.ITEM_ICONS[group]) if ResourceLoader.exists(hud.ITEM_ICONS[group]) else null
 		if tex == null:
@@ -57,13 +71,16 @@ func _run() -> void:
 	var hinged := _find_all(main, "Door")
 	var breakers := _find_all(main, "BreakerBox")
 	var boxes := _find_all(main, "PuzzleBox")
-	print("found: %d mirrors, %d presses, %d gates, %d vault doors, %d hinged, %d breakers, %d puzzle boxes" % [
-		mirrors.size(), machines.size(), gates.size(), vault_doors.size(), hinged.size(), breakers.size(), boxes.size()])
+	var lockboxes := _find_all(main, "LockBox")
+	print("found: %d mirrors, %d presses, %d gates, %d vault doors, %d hinged, %d breakers, %d puzzle boxes, %d strongboxes" % [
+		mirrors.size(), machines.size(), gates.size(), vault_doors.size(), hinged.size(), breakers.size(), boxes.size(), lockboxes.size()])
 	if mirrors.size() != route["mirrors"].size() + 1 or machines.size() != 1 or gates.size() != 1 \
-			or vault_doors.size() != 1 or breakers.size() != 1 or boxes.size() != 1 or hinged.size() < 5:
+			or vault_doors.size() != 1 or breakers.size() != 1 or boxes.size() != 1 \
+			or lockboxes.size() != 1 or hinged.size() < 5:
 		print("TEST FAIL: unexpected element counts")
 		quit(1)
 		return
+	var lockbox: LockBox = lockboxes[0]
 	var machine: PressurePuzzleManager = machines[0]
 	var pressure_gate: HydraulicDoor = gates[0]
 	# The puzzle box and the press live in different rooms, and the
@@ -225,13 +242,21 @@ func _run() -> void:
 		print("TEST FAIL: PIN did not open both front doors")
 		quit(1)
 		return
-	# Ledger notebook stores the code in the notes.
+	# Ledger notebook stores the code in the notes; the inventor's five
+	# lore notes stand beside their machines and read into the notepad.
 	var notebooks := _find_all(main, "NotebookPickup")
-	if notebooks.size() != 1:
-		print("TEST FAIL: expected one notebook in the junk")
+	var ledger: NotebookPickup = null
+	var lore_notes: Array = []
+	for nb in notebooks:
+		if "front door code" in nb.note_text:
+			ledger = nb
+		else:
+			lore_notes.append(nb)
+	if ledger == null or lore_notes.size() != 5:
+		print("TEST FAIL: expected 1 ledger + 5 lore notes, found %d notebooks" % notebooks.size())
 		quit(1)
 		return
-	notebooks[0].interact(player)
+	ledger.interact(player)
 	var pin_note_found := false
 	for entry in PlayerNotes.entries:
 		if ("%04d" % gen.front_door_pin) in entry:
@@ -240,7 +265,16 @@ func _run() -> void:
 		print("TEST FAIL: notebook did not record the door code")
 		quit(1)
 		return
-	print("fuse power + keypad + notebook OK")
+	lore_notes[0].interact(player)
+	var lore_found := false
+	for entry in PlayerNotes.entries:
+		if "C.G." in entry:
+			lore_found = true
+	if not lore_found:
+		print("TEST FAIL: lore note did not read into the notepad")
+		quit(1)
+		return
+	print("fuse power + keypad + notebook + lore OK")
 
 	# --- Mirrors: hauled ones park by a wall and must be pushed home ---
 	var route_mirrors: Array = []
@@ -437,6 +471,13 @@ func _run() -> void:
 		print("TEST FAIL: wrench landed outside the puzzle box's room at %s" % wrench.global_position)
 		quit(1)
 		return
+	# The astronomical box surrenders dial II, and nothing else.
+	var after_box := _revealed_digits()
+	if after_box.size() != 1 or not after_box.has("II") or after_box["II"] != gen._lockbox_code[1]:
+		print("TEST FAIL: puzzle box revealed %s, expected only dial II = %d" % [
+			after_box, gen._lockbox_code[1]])
+		quit(1)
+		return
 	print("puzzle box dial-and-lever sequence OK")
 
 	# --- Pause menu freezes the run ---
@@ -580,6 +621,12 @@ func _run() -> void:
 	machine.request_toggle_valve(player, 0)
 	if machine.current_psi != psi_locked:
 		print("TEST FAIL: solved press still accepts valve toggles")
+		quit(1)
+		return
+	# The press adds dial III — and only dial III.
+	var after_press := _revealed_digits()
+	if after_press.size() != 2 or not after_press.has("III") or after_press["III"] != gen._lockbox_code[2]:
+		print("TEST FAIL: press revealed %s, expected dials II+III" % after_press)
 		quit(1)
 		return
 	print("hydraulic press panel three-phase puzzle OK")
@@ -738,6 +785,12 @@ func _run() -> void:
 		print("TEST FAIL: pulling the lever did not complete the light puzzle")
 		quit(1)
 		return
+	# The safe completes the set with dial I.
+	var after_safe := _revealed_digits()
+	if after_safe.size() != 3 or not after_safe.has("I") or after_safe["I"] != gen._lockbox_code[0]:
+		print("TEST FAIL: safe revealed %s, expected all three dials" % after_safe)
+		quit(1)
+		return
 	print("wall safe cracked + lever pulled OK")
 
 	# Light + hydraulics both done: the vault gate must stand open.
@@ -748,9 +801,55 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# --- Will to the porch exit ---
+	# --- Strongbox: the three mastered machines revealed its digits ---
+	# Notes arrive in solve order; the numeral names the dial.
+	var numeral_to_dial := {"I": 0, "II": 1, "III": 2}
+	var revealed := [-1, -1, -1]
+	var reveal_count := 0
+	for entry in PlayerNotes.entries:
+		if entry.begins_with("Strongbox dial"):
+			var numeral: String = entry.get_slice(" ", 2)
+			revealed[numeral_to_dial[numeral]] = int(entry.get_slice(": ", 1))
+			reveal_count += 1
+	if reveal_count != 3:
+		print("TEST FAIL: expected 3 revealed strongbox digits, notes held %d" % reveal_count)
+		quit(1)
+		return
+	if str(revealed) != str(gen._lockbox_code):
+		print("TEST FAIL: revealed digits %s != combination %s" % [revealed, gen._lockbox_code])
+		quit(1)
+		return
 	player.drop_held()
 	var will: Grabbable = get_nodes_in_group("will_items")[0]
+	if will.get_parent() != lockbox or will.collision_layer != 0:
+		print("TEST FAIL: the Will is not stashed inside the strongbox")
+		quit(1)
+		return
+	# A wrong combination just clunks — dials keep their positions.
+	lockbox.request_set_dial(player, 0, (lockbox.combination[0] + 1) % 10)
+	lockbox.request_set_dial(player, 1, lockbox.combination[1])
+	lockbox.request_set_dial(player, 2, lockbox.combination[2])
+	lockbox.request_try_open(player)
+	if not lockbox.is_locked or lockbox.dials[1] != lockbox.combination[1]:
+		print("TEST FAIL: wrong combination opened the strongbox (or reset the dials)")
+		quit(1)
+		return
+	# The revealed digits open it and free the Will.
+	lockbox.request_set_dial(player, 0, lockbox.combination[0])
+	lockbox.request_try_open(player)
+	if lockbox.is_locked:
+		print("TEST FAIL: correct combination did not open the strongbox")
+		quit(1)
+		return
+	for i in 60:
+		await physics_frame
+	if will.get_parent() == lockbox or will.collision_layer == 0:
+		print("TEST FAIL: strongbox did not release the Will")
+		quit(1)
+		return
+	print("strongbox digits + dials + release OK")
+
+	# --- Will to the porch exit; victory cinematic + rank ---
 	player.teleport(will.global_position + Vector3(0, 0, 1.0))
 	for i in 10:
 		await physics_frame
@@ -762,14 +861,44 @@ func _run() -> void:
 	player.teleport(Vector3(0, 0.1, 16.5))
 	for i in 30:
 		await physics_frame
-	if gm.state != GameManager.State.WON or not paused:
+	if gm.state != GameManager.State.WON:
 		print("TEST FAIL: not WON at porch exit (state=%d)" % gm.state)
 		quit(1)
 		return
-	paused = false
-	print("victory subtitle: ", main.get_node("HUD/EndScreen/Center/VBox/Subtitle").text)
+	# The victory cinematic must NOT pause the tree (the character keeps
+	# idling on camera) and must lock the player's input instead.
+	if paused or not player.ui_locked:
+		print("TEST FAIL: victory should lock input, not pause the tree")
+		quit(1)
+		return
+	if not is_instance_valid(gm._cine_cam) or not gm._cine_cam.current:
+		print("TEST FAIL: victory cinematic camera did not take over")
+		quit(1)
+		return
+	# After the cinematic beat the rank screen fades in: a sub-2:00 run
+	# grades S.
+	for i in 120:
+		await physics_frame
+	var end_screen: Control = main.get_node("HUD/EndScreen")
+	var rank_label: Label = main.get_node("HUD/EndScreen/Center/VBox/Rank")
+	if not end_screen.visible or not rank_label.visible or rank_label.text != "S":
+		print("TEST FAIL: rank screen wrong (visible=%s rank=%s)" % [end_screen.visible, rank_label.text])
+		quit(1)
+		return
+	print("victory rank: %s — %s" % [rank_label.text, main.get_node("HUD/EndScreen/Center/VBox/Subtitle").text])
 	print("TEST PASS: deepened game loop end-to-end")
 	quit(0)
+
+
+## Strongbox notes written so far, as {dial_numeral: digit}. The
+## design is one digit per mastered machine, so this is sampled
+## between completions, not just at the end.
+func _revealed_digits() -> Dictionary:
+	var found := {}
+	for entry in PlayerNotes.entries:
+		if entry.begins_with("Strongbox dial"):
+			found[entry.get_slice(" ", 2)] = int(entry.get_slice(": ", 1))
+	return found
 
 
 func _press_escape() -> void:

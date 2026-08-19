@@ -1,9 +1,12 @@
+class_name HUD
 extends CanvasLayer
 
 ## HUD chrome behaviors: the objectives list can be collapsed/expanded via
 ## its header button, its on-screen size follows the
 ## GameSettings.objectives_scale setting (adjustable in the pause menu),
 ## and [Tab] toggles the collected-notes panel (PlayerNotes entries).
+## Also owns the story chrome: the intro letter shown at run start and
+## the queued radio-subtitle bar Mrs. Puddle speaks through (say()).
 ## Objective label text itself is managed by GameManager.
 
 @onready var _objectives: VBoxContainer = $Objectives
@@ -26,17 +29,40 @@ func _ready() -> void:
 	_apply_scale(GameSettings.objectives_scale)
 	_build_notes_panel()
 	_build_inventory_bar()
+	_build_dialogue_bar()
+	_build_intro()
 	_emote_wheel = EmoteWheel.new()
 	add_child(_emote_wheel)
 	# Start folded: the header stays as a "▶ Objectives" tab in the corner
 	# and the list unfolds on click, so the screen opens uncluttered.
 	_set_collapsed(true, false)
+	show_intro()
 
 
 var _emote_wheel: EmoteWheel
 
 
 func _input(event: InputEvent) -> void:
+	# The intro letter eats the HUD's own shortcuts until dismissed;
+	# movement keys still pass through (nothing to reach on the porch yet).
+	if _intro_open:
+		# A wheel notch is a "pressed" mouse button too, and the wheel is
+		# the camera zoom - it must not throw the letter away unread.
+		var clicked: bool = event is InputEventMouseButton and event.pressed \
+			and (event as InputEventMouseButton).button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]
+		var dismiss: bool = event.is_action_pressed("interact") \
+			or (event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE) \
+			or clicked
+		if dismiss:
+			dismiss_intro()
+			get_viewport().set_input_as_handled()
+		return
+	# Once the run has ended the HUD's own shortcuts are dead. The
+	# victory cinematic deliberately leaves the tree UNPAUSED (the
+	# character has to keep animating), so `paused` no longer gates
+	# them the way it did before the cinematic existed.
+	if _run_over:
+		return
 	# Hold the emote key for the wheel; release plays the highlighted one.
 	# Never over a minigame panel (co-op panels don't pause the tree).
 	if event.is_action_pressed("emote"):
@@ -102,9 +128,26 @@ const ITEM_ICONS := {
 	"prisms": "res://assets/ui/PrismIcon.svg",
 }
 var _icon_cache := {}
+var _inv_bar: HBoxContainer
+## Armed when the run ends (win or loss): retires the HUD's own
+## shortcuts and silences queued radio chatter so the end screen
+## keeps the screen to itself.
+var _run_over := false
 var _carry_panel: PanelContainer
 var _carry_icon: TextureRect
 var _carry_label: Label
+
+
+## Victory cinematic: sweep the gameplay chrome off the screen so only
+## the character (and then the rank card) is in frame. One-way — the
+## restart reload rebuilds everything.
+func hide_gameplay_chrome() -> void:
+	end_run_chrome()
+	_objectives.visible = false
+	_notes_panel.visible = false
+	_notes_hint.visible = false
+	if _inv_bar:
+		_inv_bar.visible = false
 
 
 func _icon_for(item: Node) -> Texture2D:
@@ -135,6 +178,7 @@ func _build_inventory_bar() -> void:
 	bar.offset_top = -92.0
 	bar.offset_bottom = -16.0
 	add_child(bar)
+	_inv_bar = bar
 	for i in 3:
 		var slot := InventorySlot.new()
 		slot.slot_index = i
@@ -296,15 +340,16 @@ func _build_notes_panel() -> void:
 	style.content_margin_top = 8.0
 	style.content_margin_bottom = 10.0
 	_notes_panel.add_theme_stylebox_override("panel", style)
-	# A small notepad tucked into the top-right corner; it grows downward
-	# only as far as its entries need.
+	# A notepad page in the top-right corner: fixed height with its
+	# entries scrolling, so the inventor's longer musings never run off
+	# the bottom of the screen.
 	_notes_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	_notes_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_notes_panel.grow_vertical = Control.GROW_DIRECTION_END
-	_notes_panel.offset_left = -300.0
+	_notes_panel.offset_left = -348.0
 	_notes_panel.offset_right = -16.0
 	_notes_panel.offset_top = 16.0
-	_notes_panel.offset_bottom = 60.0
+	_notes_panel.offset_bottom = 496.0
 	_notes_panel.visible = false
 	add_child(_notes_panel)
 
@@ -324,9 +369,14 @@ func _build_notes_panel() -> void:
 	close_hint.add_theme_font_size_override("font_size", 11)
 	close_hint.add_theme_color_override("font_color", Color(0.65, 0.58, 0.45))
 	header.add_child(close_hint)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	vbox.add_child(scroll)
 	_notes_list = VBoxContainer.new()
-	_notes_list.add_theme_constant_override("separation", 4)
-	vbox.add_child(_notes_list)
+	_notes_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_notes_list.add_theme_constant_override("separation", 8)
+	scroll.add_child(_notes_list)
 
 	# Small standing hint in the same corner while the pad is closed.
 	_notes_hint = Label.new()
@@ -362,6 +412,162 @@ func _refresh_notes() -> void:
 		var note := Label.new()
 		note.text = "• " + entry
 		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		note.add_theme_font_size_override("font_size", 12)
 		note.add_theme_color_override("font_color", Color(0.88, 0.84, 0.72))
 		_notes_list.add_child(note)
+
+
+# --- Radio subtitle bar (Mrs. Puddle) --------------------------------------
+
+
+var _dialogue_box: PanelContainer
+var _dialogue_label: Label
+var _dialogue_queue: Array[String] = []
+var _dialogue_busy := false
+var _dialogue_tween: Tween
+
+
+## The run is over: the end screen owns the screen from here. Drops
+## queued radio chatter so it can't talk over the rank card or the
+## defeat text, and retires [Tab]/the emote wheel — the win path
+## leaves the tree unpaused, so nothing else would stop them.
+func end_run_chrome() -> void:
+	_run_over = true
+	_dialogue_queue.clear()
+	if _dialogue_tween:
+		_dialogue_tween.kill()
+	_dialogue_busy = false
+	_dialogue_box.visible = false
+
+
+func _build_dialogue_bar() -> void:
+	_dialogue_box = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.05, 0.045, 0.035, 0.82)
+	style.border_color = Color(0.55, 0.42, 0.18, 0.9)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(5)
+	style.content_margin_left = 16.0
+	style.content_margin_right = 16.0
+	style.content_margin_top = 7.0
+	style.content_margin_bottom = 8.0
+	_dialogue_box.add_theme_stylebox_override("panel", style)
+	_dialogue_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_dialogue_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_dialogue_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_dialogue_box.offset_bottom = -108.0
+	_dialogue_box.visible = false
+	_dialogue_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_dialogue_box)
+	_dialogue_label = Label.new()
+	_dialogue_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_dialogue_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_dialogue_label.custom_minimum_size = Vector2(560, 0)
+	_dialogue_label.add_theme_font_size_override("font_size", 17)
+	_dialogue_label.add_theme_color_override("font_color", Color(0.95, 0.88, 0.72))
+	_dialogue_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_dialogue_box.add_child(_dialogue_label)
+
+
+## Queue a radio line from Mrs. Puddle. Lines play one after another (a
+## short hold scaled to length), never clobbering each other the way the
+## milestone banner does.
+func say(line: String) -> void:
+	if _run_over:
+		return
+	_dialogue_queue.append(line)
+	if not _dialogue_busy:
+		_advance_dialogue()
+
+
+func _advance_dialogue() -> void:
+	if _dialogue_queue.is_empty():
+		_dialogue_busy = false
+		_dialogue_box.visible = false
+		return
+	_dialogue_busy = true
+	var line: String = _dialogue_queue.pop_front()
+	_dialogue_label.text = "MRS. PUDDLE — “%s”" % line
+	AudioSynthesizer.play_ui("radio", -14.0)
+	_dialogue_box.modulate.a = 0.0
+	_dialogue_box.visible = true
+	var hold := 2.0 + line.length() * 0.04
+	_dialogue_tween = create_tween()
+	_dialogue_tween.tween_property(_dialogue_box, "modulate:a", 1.0, 0.22)
+	_dialogue_tween.tween_interval(hold)
+	_dialogue_tween.tween_property(_dialogue_box, "modulate:a", 0.0, 0.45)
+	_dialogue_tween.tween_callback(_advance_dialogue)
+
+
+# --- Intro letter (run start) ----------------------------------------------
+
+
+var _intro_layer: Control
+var _intro_open := false
+
+
+func _build_intro() -> void:
+	_intro_layer = Control.new()
+	_intro_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_intro_layer.visible = false
+	add_child(_intro_layer)
+	var dim := ColorRect.new()
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0.03, 0.025, 0.02, 0.72)
+	_intro_layer.add_child(dim)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_intro_layer.add_child(center)
+	var page := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.12, 0.1, 0.07, 0.97)
+	style.border_color = Color(0.62, 0.47, 0.2)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(4)
+	style.content_margin_left = 34.0
+	style.content_margin_right = 34.0
+	style.content_margin_top = 24.0
+	style.content_margin_bottom = 24.0
+	page.add_theme_stylebox_override("panel", style)
+	center.add_child(page)
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 14)
+	page.add_child(vbox)
+	var title := Label.new()
+	title.text = Story.INTRO_TITLE
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 24)
+	title.add_theme_color_override("font_color", Color(0.95, 0.8, 0.45))
+	vbox.add_child(title)
+	var body := Label.new()
+	body.text = Story.INTRO_TEXT
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size = Vector2(620, 0)
+	body.add_theme_font_size_override("font_size", 16)
+	body.add_theme_color_override("font_color", Color(0.9, 0.86, 0.74))
+	vbox.add_child(body)
+	var hint := Label.new()
+	hint.text = Story.INTRO_HINT
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 14)
+	hint.add_theme_color_override("font_color", Color(0.7, 0.62, 0.45))
+	vbox.add_child(hint)
+
+
+func show_intro() -> void:
+	_intro_open = true
+	_intro_layer.visible = true
+	# Same busy-gate the minigames use: suppresses the emote wheel and
+	# tells the pause menu someone else owns the screen.
+	_intro_layer.add_to_group("modal_ui")
+
+
+func dismiss_intro() -> void:
+	if not _intro_open:
+		return
+	_intro_open = false
+	_intro_layer.visible = false
+	_intro_layer.remove_from_group("modal_ui")
+	AudioSynthesizer.play_ui("tick", -12.0, 0.9)
+	say(Story.RADIO["run_start"])
