@@ -19,6 +19,13 @@ enum State { PREGAME, PLAYING, WON, LOST }
 ## 4-Minute Co-op Puzzle Heist").
 @export var run_time: float = 240.0
 
+## Playtest switch: uncheck on the GameManager node to run without a
+## clock — the countdown freezes, the tension layer stays quiet and
+## the run can never be lost on time, so a level can be explored at
+## leisure. Everything else (puzzles, the win, the rank screen) is
+## untouched. MUST be back on for a real build.
+@export var timer_enabled: bool = true
+
 @onready var _mansion: MansionGenerator = $"../MansionGenerator"
 @onready var _hud: HUD = $"../HUD"
 @onready var _timer_label: Label = $"../HUD/TimerLabel"
@@ -88,7 +95,10 @@ func _ready() -> void:
 		press.puzzle_solved.connect(_on_pressure_solved)
 	_exit_zones = get_tree().get_nodes_in_group("exit_zones")
 
-	_timer_label.text = _format_time(time_left)
+	_timer_label.text = _format_time(time_left) if timer_enabled else "--:--"
+	if not timer_enabled:
+		_timer_label.modulate = Color(0.55, 0.85, 1.0)
+		print("[GameManager] timer_enabled = false: playtest mode, no time limit")
 	_refresh_objectives()
 
 
@@ -98,18 +108,19 @@ func _process(delta: float) -> void:
 	_update_partner_arrow()
 	if state != State.PLAYING or get_tree().paused:
 		return
-	time_left -= delta
-	if time_left <= 0.0:
-		time_left = 0.0
-		if _is_verdict_authority():
-			_trigger_lose()
-	var text := _format_time(time_left)
-	if text != _last_timer_text:
-		_last_timer_text = text
-		_timer_label.text = text
-	_update_tension(delta)
+	if timer_enabled:
+		time_left -= delta
+		if time_left <= 0.0:
+			time_left = 0.0
+			if _is_verdict_authority():
+				_trigger_lose()
+		var text := _format_time(time_left)
+		if text != _last_timer_text:
+			_last_timer_text = text
+			_timer_label.text = text
+		_update_tension(delta)
 	# Host streams the authoritative clock to the client at 1 Hz.
-	if NetworkSession.multiplayer_active and multiplayer.is_server():
+	if timer_enabled and NetworkSession.multiplayer_active and multiplayer.is_server():
 		_time_sync_accum += delta
 		if _time_sync_accum >= 1.0:
 			_time_sync_accum = 0.0
@@ -357,11 +368,14 @@ func _begin_victory_sequence(elapsed: float) -> void:
 		_cine_cam.fov = 38.0
 		add_child(_cine_cam)
 		# The body's forward is -Z: frame the shot from where the character
-		# faces, slightly above eye height, easing in slowly.
-		var face: Vector3 = -me.global_transform.basis.z
+		# faces, slightly above eye height, easing in slowly. Interior rooms
+		# are only 10 m across, so a character facing a wall would put the
+		# camera inside it (nothing fades for a camera that isn't the
+		# player's own) — _pick_cine_angle finds one with line of sight.
 		var focus: Vector3 = me.global_position + Vector3(0, 1.25, 0)
-		var from: Vector3 = me.global_position + face * 3.6 + Vector3(0, 1.8, 0)
-		var to: Vector3 = me.global_position + face * 2.3 + Vector3(0, 1.45, 0)
+		var shot: Vector3 = _pick_cine_angle(me, focus)
+		var from: Vector3 = me.global_position + shot + Vector3(0, 1.8, 0)
+		var to: Vector3 = me.global_position + shot * 0.64 + Vector3(0, 1.45, 0)
 		_cine_cam.global_position = from
 		_cine_cam.look_at(focus)
 		_cine_cam.current = true
@@ -371,10 +385,44 @@ func _begin_victory_sequence(elapsed: float) -> void:
 				return
 			_cine_cam.global_position = from.lerp(to, t)
 			_cine_cam.look_at(focus), 0.0, 1.0, 6.0)
-	await get_tree().create_timer(1.4).timeout
-	if state != State.WON:
+	# Node-bound, so [R] during this beat kills it with the scene
+	# instead of resuming the coroutine on a freed GameManager.
+	var beat := create_tween()
+	beat.tween_interval(1.4)
+	await beat.finished
+	if not is_instance_valid(self) or state != State.WON:
 		return
 	_show_victory_screen(elapsed)
+
+
+## Camera offset for the victory shot: a direction with real line of
+## sight, scaled to the room actually available. Prefers where the
+## character is facing, then sweeps around them, and finally takes the
+## least-blocked angle pulled in to just short of whatever it hit — so
+## the shot is never framed from inside a wall.
+const CINE_DISTANCE := 3.6
+const CINE_MIN_DISTANCE := 1.5
+
+
+func _pick_cine_angle(me: Node3D, focus: Vector3) -> Vector3:
+	var facing: Vector3 = -me.global_transform.basis.z
+	var space := me.get_world_3d().direct_space_state
+	var best: Vector3 = facing * CINE_MIN_DISTANCE
+	var best_room := -1.0
+	for step in [0.0, 40.0, -40.0, 80.0, -80.0, 130.0, -130.0, 180.0]:
+		var dir: Vector3 = Basis(Vector3.UP, deg_to_rad(step)) * facing
+		var probe := PhysicsRayQueryParameters3D.create(
+			focus, focus + dir * (CINE_DISTANCE + 0.3))
+		probe.exclude = [me.get_rid()]
+		var hit := space.intersect_ray(probe)
+		if hit.is_empty():
+			return dir * CINE_DISTANCE
+		# Blocked: remember how much room this angle really offers.
+		var room: float = focus.distance_to(hit["position"]) - 0.35
+		if room > best_room:
+			best_room = room
+			best = dir * clampf(room, CINE_MIN_DISTANCE, CINE_DISTANCE)
+	return best
 
 
 func _show_victory_screen(elapsed: float) -> void:

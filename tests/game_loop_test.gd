@@ -63,6 +63,9 @@ func _run() -> void:
 		route["name"], route["mirrors"].size(), gen._valve_cells, gen._puzzle_box_cell])
 	var player: Player = main.get_node("Players/1")
 	var gm: GameManager = main.get_node("GameManager")
+	# Main.tscn may ship with the playtest switch off; the loop test
+	# always exercises the real timed run.
+	gm.timer_enabled = true
 	var pause_menu: PauseMenu = main.get_node("PauseMenu")
 	var mirrors := _find_all(main, "PrismTable")
 	var machines := _find_all(main, "PressurePuzzleManager")

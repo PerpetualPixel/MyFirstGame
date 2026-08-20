@@ -57,3 +57,4 @@ _spawnable_scenes = PackedStringArray("res://scenes/Player.tscn")
 
 [node name="GameManager" type="Node" parent="."]
 script = ExtResource("6_manager")
+timer_enabled = false

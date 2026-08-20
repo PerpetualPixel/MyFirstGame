@@ -42,6 +42,9 @@ func _run() -> void:
 	var gm: GameManager = main.get_node("GameManager")
 	var hud: HUD = main.get_node("HUD")
 	hud.dismiss_intro()
+	# The scene may ship with the playtest switch off; this test is
+	# about the real timed loop.
+	gm.timer_enabled = true
 	gm.state = GameManager.State.PLAYING
 	gm.time_left = 0.05
 	for i in 30:

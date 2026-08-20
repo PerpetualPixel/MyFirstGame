@@ -1690,7 +1690,8 @@ func _spawn_garage() -> void:
 	# garage's side door open. Every spot sits directly against (or on
 	# top of) a specific nearby prop, never bare ground: the junk-lot
 	# bins/crate/car, or the mechanic's toolbox by the roadster out on
-	# the driveway.
+	# the driveway. NEVER inside the garage: this bar is the only key
+	# to it, and both other ways in are opened from the inside.
 	var crowbar := CROWBAR_SCENE.instantiate() as Grabbable
 	crowbar.name = "Crowbar"
 	var crowbar_spots: Array[Vector3] = [
@@ -1698,7 +1699,6 @@ func _spawn_garage() -> void:
 		Vector3(27.5, 0.25, 21.1),   # leaning on the junk car's flank
 		Vector3(27.6, 0.83, 25.9),   # atop the south-arm crate
 		Vector3(7.85, 0.52, 29.75),  # atop the roadster's toolbox crate
-		c + Vector3(-2.6, 0.1, -1.5),  # on the floor under the workbench
 		Vector3(28.0, 0.85, 17.4),   # atop the north-end junk crate
 	]
 	_crowbar_spot = crowbar_spots[_rng.randi_range(0, crowbar_spots.size() - 1)]
@@ -1722,15 +1722,17 @@ func _spawn_garage() -> void:
 	_generated_root.add_child(garage_fuse)
 
 	# The Small Wrench — first phase of the hydraulic press — lives in the
-	# workshop, at one of several seeded spots around the bench (or out on
-	# the junk car's hood).
+	# workshop, at one of several seeded spots around the bench (or out
+	# by the junk car). Spots must rest on a COLLIDER: the car's hood and
+	# cabin are bare decor meshes, so an item 'on' one falls through and
+	# ends up sealed inside it, invisible from every angle.
 	var small_wrench := SMALL_WRENCH_SCENE.instantiate() as Grabbable
 	small_wrench.name = "SmallWrench"
 	var small_wrench_spots: Array[Vector3] = [
 		c + Vector3(-2.4, 0.95, -2.4),   # west end of the workbench
 		c + Vector3(-0.8, 0.95, -2.5),   # east end of the workbench
 		c + Vector3(1.2, 0.1, -2.2),     # floor between bench and crate
-		Vector3(27.7, 1.02, 19.55),      # on the junk car's hood
+		Vector3(26.05, 0.12, 19.3),      # on the dirt beside the spare tyre
 	]
 	_small_wrench_spot = small_wrench_spots[_rng.randi_range(0, small_wrench_spots.size() - 1)]
 	small_wrench.position = _small_wrench_spot
@@ -1747,7 +1749,7 @@ func _spawn_garage() -> void:
 		Vector3(27.9, 0.82, 25.9),   # atop the south-arm crate
 		Vector3(5.2, 0.42, 23.3),    # resting on the porch firewood stack
 		c + Vector3(-4.5, 0.13, -0.7),  # on the patio pad by the side door
-		Vector3(27.85, 1.32, 20.95),    # on the junk car's cabin roof
+		Vector3(27.85, 0.95, 21.75),    # on the junk car's rear deck
 	]
 	_notebook_spot = notebook_spots[_rng.randi_range(0, notebook_spots.size() - 1)]
 	notebook.position = _notebook_spot
