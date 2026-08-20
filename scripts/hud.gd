@@ -117,15 +117,20 @@ func _apply_scale(value: float) -> void:
 
 ## Item group -> icon. Every pickup in the estate has one; the first
 ## matching group wins (the wrenches share "wrenches", so their specific
-## groups come first).
+## groups come first). These are RENDERED FROM THE ITEMS' OWN 3D MODELS
+## by tools/render_item_icons.gd, so a slot can never show a picture of
+## something other than what was picked up — re-run it after changing a
+## pickup's look. The pendants entry is the default; _icon_for swaps in
+## the sky-mark actually being carried.
 const ITEM_ICONS := {
-	"fuses": "res://assets/ui/FuseIcon.png",
-	"crowbars": "res://assets/ui/CrowbarIcon.png",
-	"small_wrenches": "res://assets/ui/SmallWrenchIcon.svg",
-	"big_wrenches": "res://assets/ui/WrenchIcon.svg",
-	"will_items": "res://assets/ui/WillIcon.svg",
-	"batteries": "res://assets/ui/BatteryIcon.svg",
-	"prisms": "res://assets/ui/PrismIcon.svg",
+	"fuses": "res://assets/ui/items/fuse.png",
+	"crowbars": "res://assets/ui/items/crowbar.png",
+	"small_wrenches": "res://assets/ui/items/small_wrench.png",
+	"big_wrenches": "res://assets/ui/items/brass_wrench.png",
+	"will_items": "res://assets/ui/items/will.png",
+	"batteries": "res://assets/ui/items/battery.png",
+	"prisms": "res://assets/ui/items/prism.png",
+	"pendants": "res://assets/ui/items/pendant_moon.png",
 }
 var _icon_cache := {}
 var _inv_bar: HBoxContainer
@@ -151,6 +156,13 @@ func hide_gameplay_chrome() -> void:
 
 
 func _icon_for(item: Node) -> Texture2D:
+	# Pendants all share a group but not a face.
+	if item is AstralPendant:
+		var pend := "res://assets/ui/items/pendant_%s.png" % (item as AstralPendant).pendant_symbol
+		if not _icon_cache.has(pend):
+			_icon_cache[pend] = load(pend) if ResourceLoader.exists(pend) else null
+		if _icon_cache[pend] != null:
+			return _icon_cache[pend]
 	for group in ITEM_ICONS:
 		if item.is_in_group(group):
 			var path: String = ITEM_ICONS[group]
@@ -277,6 +289,7 @@ func _refresh_inventory_bar() -> void:
 		if show:
 			_carry_icon.texture = _icon_for(carried)
 			_carry_label.text = str(carried.get("display_name"))
+			_carry_panel.tooltip_text = str(carried.get("display_name"))
 	for i in _inv_slots.size():
 		var slot := _inv_slots[i]
 		for child in slot.get_children():
@@ -285,11 +298,15 @@ func _refresh_inventory_bar() -> void:
 			_slot_style_selected if i == selected else _slot_style_normal)
 		if i >= items.size() or not is_instance_valid(items[i]):
 			slot.item_name = ""
+			slot.tooltip_text = ""
 			continue
 		var item: Node = items[i]
 		slot.item_name = str(item.get("display_name"))
 		var icon_tex: Texture2D = _icon_for(item)
 		var is_spent: bool = item.get("spent") == true
+		# Hovering a slot names the thing in it, and says so when its
+		# job is done (the slot also gets a red cross, below).
+		slot.tooltip_text = ("%s — used up, safe to drop" % slot.item_name) if is_spent else slot.item_name
 		if icon_tex != null:
 			var icon := TextureRect.new()
 			icon.texture = icon_tex

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://mcymj146kvyb"
-path="res://.godot/imported/CrowbarIcon.png-9eea8ab08ed6cfd6717038c2d8dd42eb.ctex"
+uid="uid://dnjv6e028kgyb"
+path="res://.godot/imported/pendant_star.png-06027c2a224fc79989dc5b7a59cfabbb.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/CrowbarIcon.png"
-dest_files=["res://.godot/imported/CrowbarIcon.png-9eea8ab08ed6cfd6717038c2d8dd42eb.ctex"]
+source_file="res://assets/ui/items/pendant_star.png"
+dest_files=["res://.godot/imported/pendant_star.png-06027c2a224fc79989dc5b7a59cfabbb.ctex"]
 
 [params]
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bjm42feyyqb7p"
-path="res://.godot/imported/PrismIcon.svg-526bc97dcd33b298fb502eceec64f3e4.ctex"
+uid="uid://btt6xbim7o3aa"
+path="res://.godot/imported/brass_wrench.png-41658c021190305f84ca52a49632e0a1.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/PrismIcon.svg"
-dest_files=["res://.godot/imported/PrismIcon.svg-526bc97dcd33b298fb502eceec64f3e4.ctex"]
+source_file="res://assets/ui/items/brass_wrench.png"
+dest_files=["res://.godot/imported/brass_wrench.png-41658c021190305f84ca52a49632e0a1.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

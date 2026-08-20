@@ -1,26 +1,50 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scripts/grabbable.gd" id="1_grabbable"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_redsteel"]
-albedo_color = Color(0.5, 0.11, 0.09, 1)
+albedo_color = Color(0.62, 0.16, 0.12, 1)
 metallic = 0.75
-roughness = 0.4
+roughness = 0.35
 
 [sub_resource type="BoxMesh" id="BoxMesh_bar"]
 material = SubResource("StandardMaterial3D_redsteel")
-size = Vector3(0.07, 0.07, 0.8)
+size = Vector3(0.058, 0.058, 0.72)
 
-[sub_resource type="BoxMesh" id="BoxMesh_hook"]
+[sub_resource type="BoxMesh" id="BoxMesh_chisel"]
 material = SubResource("StandardMaterial3D_redsteel")
-size = Vector3(0.07, 0.2, 0.07)
+size = Vector3(0.085, 0.022, 0.13)
 
-[sub_resource type="BoxMesh" id="BoxMesh_tip"]
+[sub_resource type="BoxMesh" id="BoxMesh_collar"]
 material = SubResource("StandardMaterial3D_redsteel")
-size = Vector3(0.11, 0.03, 0.12)
+size = Vector3(0.07, 0.07, 0.05)
+
+[sub_resource type="BoxMesh" id="BoxMesh_claw0"]
+material = SubResource("StandardMaterial3D_redsteel")
+size = Vector3(0.062, 0.062, 0.120)
+
+[sub_resource type="BoxMesh" id="BoxMesh_claw1"]
+material = SubResource("StandardMaterial3D_redsteel")
+size = Vector3(0.062, 0.062, 0.120)
+
+[sub_resource type="BoxMesh" id="BoxMesh_claw2"]
+material = SubResource("StandardMaterial3D_redsteel")
+size = Vector3(0.062, 0.062, 0.120)
+
+[sub_resource type="BoxMesh" id="BoxMesh_claw3"]
+material = SubResource("StandardMaterial3D_redsteel")
+size = Vector3(0.062, 0.062, 0.120)
+
+[sub_resource type="BoxMesh" id="BoxMesh_prong0"]
+material = SubResource("StandardMaterial3D_redsteel")
+size = Vector3(0.019, 0.05, 0.1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_prong1"]
+material = SubResource("StandardMaterial3D_redsteel")
+size = Vector3(0.019, 0.05, 0.1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_bar"]
-size = Vector3(0.14, 0.24, 0.9)
+size = Vector3(0.14, 0.34, 0.92)
 
 [node name="Crowbar" type="RigidBody3D" groups=["crowbars"]]
 mass = 2.0
@@ -30,17 +54,41 @@ sound_material = "metal"
 prompt_height = 0.7
 
 [node name="Bar" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, 0.02)
 mesh = SubResource("BoxMesh_bar")
 
-[node name="Hook" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.14, -0.38)
-mesh = SubResource("BoxMesh_hook")
+[node name="Collar" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, -0.3)
+mesh = SubResource("BoxMesh_collar")
 
-[node name="Tip" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.045, 0.38)
-mesh = SubResource("BoxMesh_tip")
+[node name="Chisel" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.98481, -0.17365, 0, 0.17365, 0.98481, 0, 0, 0, 1, 0, 0.052, 0.42)
+mesh = SubResource("BoxMesh_chisel")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.14, 0)
 shape = SubResource("BoxShape3D_bar")
+
+[node name="Claw0" type="MeshInstance3D" parent="."]
+transform = Transform3D(1.00000, 0.00000, 0.00000, 0.00000, -0.95106, -0.30902, 0.00000, 0.30902, -0.95106, 0.00000, 0.06661, -0.38172)
+mesh = SubResource("BoxMesh_claw0")
+
+[node name="Claw1" type="MeshInstance3D" parent="."]
+transform = Transform3D(1.00000, 0.00000, 0.00000, 0.00000, -0.61566, -0.78801, 0.00000, 0.78801, -0.61566, 0.00000, 0.11189, -0.44638)
+mesh = SubResource("BoxMesh_claw1")
+
+[node name="Claw2" type="MeshInstance3D" parent="."]
+transform = Transform3D(1.00000, 0.00000, 0.00000, 0.00000, -0.03490, -0.99939, 0.00000, 0.99939, -0.03490, 0.00000, 0.19029, -0.47492)
+mesh = SubResource("BoxMesh_claw2")
+
+[node name="Claw3" type="MeshInstance3D" parent="."]
+transform = Transform3D(1.00000, 0.00000, 0.00000, 0.00000, 0.55919, -0.82904, 0.00000, 0.82904, 0.55919, 0.00000, 0.27049, -0.45192)
+mesh = SubResource("BoxMesh_claw3")
+
+[node name="Prong0" type="MeshInstance3D" parent="."]
+transform = Transform3D(1.00000, 0.00000, 0.00000, 0.00000, 0.86603, -0.50000, 0.00000, 0.50000, 0.86603, -0.02100, 0.31191, -0.40750)
+mesh = SubResource("BoxMesh_prong0")
+
+[node name="Prong1" type="MeshInstance3D" parent="."]
+transform = Transform3D(1.00000, 0.00000, 0.00000, 0.00000, 0.86603, -0.50000, 0.00000, 0.50000, 0.86603, 0.02100, 0.31191, -0.40750)
+mesh = SubResource("BoxMesh_prong1")

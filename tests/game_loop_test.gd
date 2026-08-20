@@ -248,30 +248,53 @@ func _run() -> void:
 	# Ledger notebook stores the code in the notes; the inventor's five
 	# lore notes stand beside their machines and read into the notepad.
 	var notebooks := _find_all(main, "NotebookPickup")
-	var ledger: NotebookPickup = null
+	# The ledger page carries its own class (CodeNote) for the close-up,
+	# so it is not among the plain NotebookPickups.
+	var code_notes := _find_all(main, "CodeNote")
+	var ledger: CodeNote = code_notes[0] if code_notes.size() == 1 else null
 	var lore_notes: Array = []
 	var clue_notes: Array = []
 	for nb in notebooks:
-		if "front door code" in nb.note_text:
-			ledger = nb
-		elif nb.name in ["ObservatoryLog", "WorkshopScrap"]:
+		if nb.name in ["ObservatoryLog", "WorkshopScrap"]:
 			clue_notes.append(nb)
 		else:
 			lore_notes.append(nb)
 	# 1 door-code ledger, 5 of the inventor's musings, and the 2 puzzle-box
 	# clues (the observatory log and the workshop scrap).
 	if ledger == null or lore_notes.size() != 5 or clue_notes.size() != 2:
-		print("TEST FAIL: expected 1 ledger + 5 lore + 2 clues, found %d notebooks (%d lore, %d clues)" % [
-			notebooks.size(), lore_notes.size(), clue_notes.size()])
+		print("TEST FAIL: expected 1 ledger + 5 lore + 2 clues, found %d ledger, %d lore, %d clues" % [
+			code_notes.size(), lore_notes.size(), clue_notes.size()])
 		quit(1)
 		return
 	ledger.interact(player)
+	# The page records only what is legible: the first three digits.
+	# The last is blotted out, so the keypad has to be guessed at.
+	var legible := ("%04d" % gen.front_door_pin).substr(0, 3)
 	var pin_note_found := false
+	var leaked_full := false
 	for entry in PlayerNotes.entries:
-		if ("%04d" % gen.front_door_pin) in entry:
+		if legible in entry:
 			pin_note_found = true
+		if ("%04d" % gen.front_door_pin) in entry:
+			leaked_full = true
 	if not pin_note_found:
-		print("TEST FAIL: notebook did not record the door code")
+		print("TEST FAIL: the ledger page did not record the legible digits")
+		quit(1)
+		return
+	if leaked_full:
+		print("TEST FAIL: the ledger gave away the smudged digit too")
+		quit(1)
+		return
+	# The page can be pulled up and put back down.
+	if not ledger._panel_open:
+		print("TEST FAIL: reading the ledger did not open the page close-up")
+		quit(1)
+		return
+	_press_escape()
+	await process_frame
+	await process_frame
+	if ledger._panel_open or paused:
+		print("TEST FAIL: ESC did not put the ledger page down")
 		quit(1)
 		return
 	lore_notes[0].interact(player)

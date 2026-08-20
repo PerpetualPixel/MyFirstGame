@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://y0txvcre6llq"
-path="res://.godot/imported/WrenchIcon.svg-5edb0bdf4e2b2def76cc83af4f49ae99.ctex"
+uid="uid://bg2nojc4iivrh"
+path="res://.godot/imported/pendant_moon.png-3e065ec863c2b96f33cc63596333a43b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/WrenchIcon.svg"
-dest_files=["res://.godot/imported/WrenchIcon.svg-5edb0bdf4e2b2def76cc83af4f49ae99.ctex"]
+source_file="res://assets/ui/items/pendant_moon.png"
+dest_files=["res://.godot/imported/pendant_moon.png-3e065ec863c2b96f33cc63596333a43b.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

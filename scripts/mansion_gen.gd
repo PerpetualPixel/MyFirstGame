@@ -39,6 +39,7 @@ const GARAGE_BUTTON_SCRIPT := preload("res://scripts/puzzles/garage_door_button.
 const PUZZLE_BOX_SCRIPT := preload("res://scripts/puzzles/puzzle_box.gd")
 const LOCK_BOX_SCRIPT := preload("res://scripts/puzzles/lock_box.gd")
 const PENDANT_SCENE := preload("res://scenes/AstralPendant.tscn")
+const CODE_NOTE_SCRIPT := preload("res://scripts/code_note.gd")
 const PRISM_SCENE := preload("res://scenes/Prism.tscn")
 
 ## Three hand-authored, guaranteed-solvable laser routes; one is drawn per
@@ -1814,8 +1815,14 @@ func _spawn_garage() -> void:
 	# Ledger notebook — it records the door code. Every spot rests on (or
 	# tucked directly beside) a specific prop: junk-lot bins/crate/car,
 	# the garage patio pad, or the porch firewood stack out front.
-	var notebook := NOTEBOOK_SCENE.instantiate() as NotebookPickup
+	# The ledger page is readable in close-up (set_script before
+	# add_child, the garage-button pattern), and its last digit is
+	# blotted out — the keypad allows unlimited attempts, so a smudge
+	# costs ten tries at worst and can never strand a run.
+	var notebook = NOTEBOOK_SCENE.instantiate()
+	notebook.set_script(CODE_NOTE_SCRIPT)
 	notebook.name = "Notebook"
+	notebook.full_code = "%04d" % front_door_pin
 	var notebook_spots: Array[Vector3] = [
 		Vector3(26.7, 0.92, 16.8),   # on a bin lid at the U's north end
 		Vector3(27.9, 0.82, 25.9),   # atop the south-arm crate
@@ -1826,7 +1833,7 @@ func _spawn_garage() -> void:
 	_notebook_spot = notebook_spots[_rng.randi_range(0, notebook_spots.size() - 1)]
 	notebook.position = _notebook_spot
 	notebook.rotation.y = _rng.randf_range(0.0, TAU)
-	notebook.note_text = "Estate ledger — front door code: %04d" % front_door_pin
+	notebook.note_text = "Estate ledger — front door code %s?, last digit blotted out (the keypad takes as many tries as you like)" % ("%04d" % front_door_pin).substr(0, 3)
 	_generated_root.add_child(notebook)
 
 	# The inventor's "On Power" note, on a crate beside the breaker box.

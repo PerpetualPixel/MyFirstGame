@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cs82ydu3ranxa"
-path="res://.godot/imported/FuseIcon.png-7ed80616c174addb095810638cd4126a.ctex"
+uid="uid://dqxebwkpsta05"
+path="res://.godot/imported/fuse.png-80667eee94836615aff043a00777fba0.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/FuseIcon.png"
-dest_files=["res://.godot/imported/FuseIcon.png-7ed80616c174addb095810638cd4126a.ctex"]
+source_file="res://assets/ui/items/fuse.png"
+dest_files=["res://.godot/imported/fuse.png-80667eee94836615aff043a00777fba0.ctex"]
 
 [params]
 
