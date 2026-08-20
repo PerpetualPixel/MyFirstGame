@@ -1133,13 +1133,32 @@ func _spawn_entrance() -> void:
 ## skipped. Each room also gets one lamp table (its light source), a
 ## candle sconce, and paintings above the low pieces.
 const FLANK_OFFSET := 2.2
+## How far a corner piece sits from the room centre on both axes. Kept
+## inside the beam corners (CORNER_INSET) and checked against the
+## blocked list, so corner dressing never fouls a mirror or a pickup.
+const CORNER_SLOT := 3.55
+## Free-standing groupings sit on the diagonals between the centre and
+## the corners. The room's centre and the four axes out to the doorways
+## stay deliberately clear (room_flow_test walks exactly those lanes),
+## so nothing here can wall a player in.
+const FLOOR_SLOT := 2.35
 ## Wall slots as [wall point (local, on the wall's inner face), yaw whose
 ## local +Z faces into the room].
 var _flank_slots: Array = []
+var _corner_slots: Array = []
 
 
 func _build_flank_slots() -> void:
 	var w := room_size / 2.0 - wall_thickness / 2.0  # inner face: 4.85
+	# Corners, each turned to face diagonally into the room. Rooms used
+	# to furnish only the four wall midpoints, which left every corner
+	# bare and the place feeling like a set rather than a house.
+	_corner_slots = [
+		[Vector3(-CORNER_SLOT, 0, -CORNER_SLOT), PI / 4.0],
+		[Vector3(CORNER_SLOT, 0, -CORNER_SLOT), -PI / 4.0],
+		[Vector3(-CORNER_SLOT, 0, CORNER_SLOT), 3.0 * PI / 4.0],
+		[Vector3(CORNER_SLOT, 0, CORNER_SLOT), -3.0 * PI / 4.0],
+	]
 	_flank_slots = [
 		[Vector3(-FLANK_OFFSET, 0, -w), 0.0], [Vector3(FLANK_OFFSET, 0, -w), 0.0],           # north wall
 		[Vector3(-FLANK_OFFSET, 0, w), PI], [Vector3(FLANK_OFFSET, 0, w), PI],               # south wall
@@ -1197,14 +1216,15 @@ func _spawn_props() -> void:
 			free.erase(lamp_slot)
 			_place_lamp_table(center, lamp_slot)
 			# Two to four more pieces, seeded from the palette.
-			var want := _rng.randi_range(2, 4)
+			var want := _rng.randi_range(3, 5)
 			for i in range(free.size() - 1, 0, -1):
 				var j := _rng.randi_range(0, i)
 				var tmp = free[i]
 				free[i] = free[j]
 				free[j] = tmp
 			var placed := 0
-			var kinds := ["bookcase", "sideboard", "armchair", "plant", "desk", "bookcase"]
+			var kinds := ["bookcase", "sideboard", "armchair", "plant", "desk",
+				"dresser", "settee", "cabinet", "wine_rack", "bookcase", "sideboard"]
 			for slot in free:
 				if placed >= want:
 					break
@@ -1213,15 +1233,29 @@ func _spawn_props() -> void:
 					kind = "coat_rack"
 				_place_wall_piece(kind, center, slot)
 				placed += 1
+			# Any wall slot left over gets a picture hung on it, so bare
+			# stretches of wall still read as somebody's house.
+			for slot in free.slice(placed, free.size()):
+				if _rng.randf() < 0.55:
+					_place_painting(_wall_group(center + slot[0], slot[1]), _rng.randf_range(1.5, 1.95))
+			_place_corner_pieces(cell, center, blocked)
+			_place_floor_pieces(cell, center, blocked)
 			# A candle sconce 1.45 m off one wall's door axis (between the
 			# doorway and the flank piece), on the wall face.
-			var sconce_slot: Array = _flank_slots[_rng.randi_range(0, _flank_slots.size() - 1)]
-			var wall_point: Vector3 = sconce_slot[0]
-			if absf(wall_point.x) > 4.0:
-				wall_point.z = signf(wall_point.z) * 1.45
-			else:
-				wall_point.x = signf(wall_point.x) * 1.45
-			_add_sconce(center + wall_point, sconce_slot[1])
+			# Two sconces, on different walls: one lit corner per room read as
+			# under-dressed next to the lamp table.
+			var sconce_used: Array[float] = []
+			for s_i in 2:
+				var sconce_slot: Array = _flank_slots[_rng.randi_range(0, _flank_slots.size() - 1)]
+				if sconce_slot[1] in sconce_used:
+					continue
+				sconce_used.append(sconce_slot[1])
+				var wall_point: Vector3 = sconce_slot[0]
+				if absf(wall_point.x) > 4.0:
+					wall_point.z = signf(wall_point.z) * 1.45
+				else:
+					wall_point.x = signf(wall_point.x) * 1.45
+				_add_sconce(center + wall_point, sconce_slot[1])
 
 
 ## Oriented placement helper: `origin` is the wall point (world), `yaw`
@@ -1364,6 +1398,67 @@ func _place_wall_piece(kind: String, center: Vector3, slot: Array) -> void:
 			# Stool tucked under the front edge (decor only).
 			_group_box(group, Vector3(0.1, 0.22, 0.6), Vector3(0.4, 0.44, 0.4), _shelf_material, false)
 			_place_painting(group, 1.7)
+		"dresser":
+			# Chest of drawers with brass pulls and a wall mirror over it.
+			_group_box(group, Vector3(0, 0.46, 0.26), Vector3(1.15, 0.92, 0.52), _table_material, true)
+			for drawer_y in [0.24, 0.52, 0.8]:
+				_group_box(group, Vector3(0, drawer_y, 0.53), Vector3(1.0, 0.24, 0.02), _shelf_material, false)
+				for pull_x in [-0.24, 0.24]:
+					_group_sphere(group, Vector3(pull_x, drawer_y, 0.55), 0.035,
+						_make_material(Color(0.78, 0.62, 0.3), 0.8, 0.3))
+			# Mirror: a dark pane in a gilt frame.
+			_group_box(group, Vector3(0, 1.62, 0.08), Vector3(0.72, 0.94, 0.05),
+				_make_material(Color(0.72, 0.58, 0.28), 0.7, 0.35), false)
+			_group_box(group, Vector3(0, 1.62, 0.11), Vector3(0.6, 0.82, 0.02),
+				_make_material(Color(0.32, 0.36, 0.4), 0.9, 0.1), false)
+			_group_cylinder(group, Vector3(-0.36, 1.06, 0.26), 0.05, 0.22,
+				_make_material(Color(0.5, 0.55, 0.6)), false)
+		"settee":
+			# Long buttoned couch with a low table and a stack of books.
+			_group_box(group, Vector3(0, 0.2, 0.5), Vector3(1.9, 0.4, 0.78), _rug_material, true)
+			_group_box(group, Vector3(0, 0.62, 0.14), Vector3(1.9, 0.5, 0.2), _rug_material, true)
+			for arm_x in [-0.9, 0.9]:
+				_group_box(group, Vector3(arm_x, 0.5, 0.5), Vector3(0.14, 0.24, 0.78), _table_material, false)
+			for cushion_x in [-0.5, 0.5]:
+				_group_box(group, Vector3(cushion_x, 0.44, 0.5), Vector3(0.72, 0.12, 0.66),
+					_make_material(Color(0.5, 0.2, 0.22)), false)
+			_group_box(group, Vector3(0, 0.2, 1.28), Vector3(0.8, 0.06, 0.44), _table_material, false)
+			for leg in [[-0.32, 1.1], [0.32, 1.1], [-0.32, 1.46], [0.32, 1.46]]:
+				_group_box(group, Vector3(leg[0], 0.09, leg[1]), Vector3(0.05, 0.18, 0.05), _table_material, false)
+			_group_box(group, Vector3(-0.16, 0.27, 1.28), Vector3(0.22, 0.06, 0.16),
+				_make_material(Color(0.4, 0.16, 0.14)), false)
+			_group_box(group, Vector3(-0.16, 0.33, 1.26), Vector3(0.2, 0.05, 0.15),
+				_make_material(Color(0.25, 0.3, 0.22)), false)
+			_place_painting(group, 1.68)
+		"cabinet":
+			# Tall glazed cabinet: shelves of bottles and specimen jars.
+			_group_box(group, Vector3(0, 1.02, 0.22), Vector3(1.0, 2.04, 0.44), _shelf_material, true)
+			_group_box(group, Vector3(0, 1.16, 0.44), Vector3(0.82, 1.5, 0.03),
+				_make_material(Color(0.55, 0.68, 0.7, 0.35)), false)
+			for shelf_i in 3:
+				var cy := 0.5 + shelf_i * 0.52
+				_group_box(group, Vector3(0, cy, 0.24), Vector3(0.9, 0.04, 0.4), _table_material, false)
+				var bx := -0.34
+				while bx < 0.34:
+					var bottle := _make_material(Color(_rng.randf_range(0.2, 0.55),
+						_rng.randf_range(0.3, 0.6), _rng.randf_range(0.25, 0.5), 0.85))
+					_group_cylinder(group, Vector3(bx, cy + 0.15, 0.24),
+						_rng.randf_range(0.04, 0.06), _rng.randf_range(0.2, 0.3), bottle, false)
+					bx += 0.17
+		"wine_rack":
+			# Diamond lattice of bottle ends, and a crate of spares below.
+			_group_box(group, Vector3(0, 0.72, 0.2), Vector3(1.1, 1.44, 0.4), _shelf_material, true)
+			for row in 4:
+				var ry := 0.28 + row * 0.34
+				var rx := -0.38
+				while rx < 0.38:
+					if _rng.randf() < 0.78:
+						var cork := _make_material(Color(0.16, 0.12, 0.1))
+						_group_cylinder(group, Vector3(rx, ry, 0.39), 0.055, 0.06, cork, false)
+						_group_cylinder(group, Vector3(rx, ry, 0.34), 0.03, 0.05,
+							_make_material(Color(0.7, 0.6, 0.35)), false)
+					rx += 0.19
+			_group_box(group, Vector3(0.62, 0.18, 0.3), Vector3(0.42, 0.36, 0.42), _crate_material, false)
 		"coat_rack":
 			_group_cylinder(group, Vector3(0, 0.9, 0.35), 0.035, 1.8, _shelf_material, true)
 			_group_cylinder(group, Vector3(0, 0.03, 0.35), 0.28, 0.06, _shelf_material, false)
@@ -1373,6 +1468,207 @@ func _place_wall_piece(kind: String, center: Vector3, slot: Array) -> void:
 			# A hung coat and a hat.
 			_group_box(group, Vector3(0.14, 1.25, 0.35), Vector3(0.28, 0.85, 0.16), _make_material(Color(0.2, 0.18, 0.2)), false)
 			_group_cylinder(group, Vector3(-0.1, 1.86, 0.35), 0.11, 0.1, _make_material(Color(0.15, 0.13, 0.12)), false)
+
+
+## Dress this room's corners. Corners are the closest furniture ever
+## gets to the beam route (every laser mirror stands at CORNER_INSET from
+## both walls), so each candidate is checked against the blocked list,
+## the run's mirror spots, and the solved beam path before anything is
+## built there.
+func _place_corner_pieces(cell: Vector2i, center: Vector3, blocked: Array) -> void:
+	var kinds := ["globe", "armour", "screen", "crates", "fern", "corner_shelf"]
+	var slots: Array = _corner_slots.duplicate()
+	for i in range(slots.size() - 1, 0, -1):
+		var j := _rng.randi_range(0, i)
+		var tmp = slots[i]
+		slots[i] = slots[j]
+		slots[j] = tmp
+	var want := _rng.randi_range(2, 3)
+	var placed := 0
+	for slot in slots:
+		if placed >= want:
+			break
+		var world: Vector3 = center + slot[0]
+		var ok := true
+		for b in blocked:
+			if Vector2(world.x - b.x, world.z - b.z).length() < 1.3:
+				ok = false
+				break
+		if ok:
+			for spot in active_route["mirrors"]:
+				if Vector2(world.x - spot.x, world.z - spot.z).length() < 1.9:
+					ok = false
+					break
+		if ok and _near_beam_path(world):
+			ok = false
+		if not ok:
+			continue
+		_place_corner_piece(kinds[_rng.randi_range(0, kinds.size() - 1)], center, slot)
+		placed += 1
+
+
+## Corner dressing, built in the slot's local space (+Z faces the room).
+func _place_corner_piece(kind: String, center: Vector3, slot: Array) -> void:
+	var group := _wall_group(center + slot[0], slot[1])
+	match kind:
+		"globe":
+			for leg_x in [-0.16, 0.16]:
+				_group_box(group, Vector3(leg_x, 0.35, 0.0), Vector3(0.05, 0.7, 0.05), _shelf_material, false)
+			_group_box(group, Vector3(0, 0.72, 0), Vector3(0.42, 0.05, 0.42), _shelf_material, true)
+			_group_sphere(group, Vector3(0, 1.0, 0), 0.24, _make_material(Color(0.28, 0.42, 0.5)))
+			_group_cylinder(group, Vector3(0, 1.0, 0), 0.26, 0.02, _make_material(Color(0.75, 0.6, 0.3), 0.7, 0.35), false)
+		"armour":
+			# A suit of plate on a stand, visor down.
+			var steel := _make_material(Color(0.42, 0.44, 0.5), 0.85, 0.3)
+			_group_cylinder(group, Vector3(0, 0.04, 0), 0.34, 0.08, _stone_material, true)
+			_group_box(group, Vector3(0, 0.55, 0), Vector3(0.44, 0.62, 0.3), steel, true)
+			_group_box(group, Vector3(0, 1.0, 0), Vector3(0.5, 0.28, 0.34), steel, false)
+			_group_sphere(group, Vector3(0, 1.26, 0), 0.16, steel)
+			_group_box(group, Vector3(0, 1.24, 0.14), Vector3(0.2, 0.07, 0.06), _iron_material, false)
+			for arm_x in [-0.3, 0.3]:
+				_group_box(group, Vector3(arm_x, 0.68, 0), Vector3(0.13, 0.62, 0.16), steel, false)
+			# Halberd leaning on the shoulder.
+			_group_cylinder(group, Vector3(0.36, 0.9, 0.1), 0.03, 1.8, _shelf_material, false)
+			_group_box(group, Vector3(0.36, 1.76, 0.1), Vector3(0.16, 0.26, 0.03), steel, false)
+		"screen":
+			# Three-panel folding screen, angled across the corner.
+			var silk := _make_material(Color(0.36, 0.2, 0.26))
+			var panels := [[-0.5, -0.12, 0.5], [0.0, 0.06, 0.0], [0.5, -0.12, -0.5]]
+			for pnl in panels:
+				var g2 := Node3D.new()
+				g2.position = Vector3(pnl[0], 0.85, pnl[1])
+				g2.rotation.y = pnl[2]
+				group.add_child(g2)
+				_group_box(g2, Vector3.ZERO, Vector3(0.52, 1.7, 0.05), silk, false)
+				_group_box(g2, Vector3(0, 0.87, 0), Vector3(0.54, 0.06, 0.07), _shelf_material, false)
+		"crates":
+			# A stack of packing crates and a rolled carpet.
+			_group_box(group, Vector3(-0.16, 0.28, 0), Vector3(0.62, 0.56, 0.56), _crate_material, true)
+			_group_box(group, Vector3(-0.1, 0.74, 0.04), Vector3(0.5, 0.36, 0.46), _crate_material, false)
+			_group_box(group, Vector3(0.36, 0.2, -0.08), Vector3(0.42, 0.4, 0.42), _crate_material, true)
+			_group_cylinder(group, Vector3(0.42, 0.62, 0.1), 0.12, 1.2, _rug_material, false)
+		"fern":
+			_group_cylinder(group, Vector3(0, 0.28, 0), 0.28, 0.56, _make_material(Color(0.45, 0.28, 0.2)), true)
+			_group_sphere(group, Vector3(0, 0.92, 0), 0.46, _hedge_material)
+			_group_sphere(group, Vector3(0.24, 1.16, 0.1), 0.28, _pine_material)
+			_group_sphere(group, Vector3(-0.2, 1.1, -0.06), 0.24, _hedge_material)
+		"corner_shelf":
+			# Shelving with jars, books and a bird under a glass dome.
+			_group_box(group, Vector3(0, 0.9, -0.02), Vector3(0.9, 1.8, 0.34), _shelf_material, true)
+			for shelf_i in 3:
+				var sy := 0.42 + shelf_i * 0.5
+				_group_box(group, Vector3(0, sy, 0.03), Vector3(0.86, 0.04, 0.36), _table_material, false)
+				var jar_x := -0.3
+				while jar_x < 0.3:
+					if _rng.randf() < 0.7:
+						_group_cylinder(group, Vector3(jar_x, sy + 0.14, 0.04),
+							_rng.randf_range(0.05, 0.08), _rng.randf_range(0.16, 0.26),
+							_make_material(Color(0.5, 0.6, 0.45, 0.8)), false)
+					jar_x += 0.19
+			_group_sphere(group, Vector3(0.0, 1.62, 0.04), 0.12, _make_material(Color(0.8, 0.78, 0.7, 0.5)))
+
+
+## Free-standing furniture out on the floor, on the diagonals so the
+## centre and the four doorway lanes stay walkable.
+func _place_floor_pieces(cell: Vector2i, center: Vector3, blocked: Array) -> void:
+	var kinds := ["card_table", "reading_nook", "chaise", "steamer_trunk"]
+	var slots: Array = [
+		[Vector3(-FLOOR_SLOT, 0, -FLOOR_SLOT), PI / 4.0],
+		[Vector3(FLOOR_SLOT, 0, -FLOOR_SLOT), -PI / 4.0],
+		[Vector3(-FLOOR_SLOT, 0, FLOOR_SLOT), 3.0 * PI / 4.0],
+		[Vector3(FLOOR_SLOT, 0, FLOOR_SLOT), -3.0 * PI / 4.0],
+	]
+	for i in range(slots.size() - 1, 0, -1):
+		var j := _rng.randi_range(0, i)
+		var tmp = slots[i]
+		slots[i] = slots[j]
+		slots[j] = tmp
+	var want := _rng.randi_range(1, 2)
+	var placed := 0
+	for slot in slots:
+		if placed >= want:
+			break
+		var world: Vector3 = center + slot[0]
+		var ok := true
+		for b in blocked:
+			if Vector2(world.x - b.x, world.z - b.z).length() < 1.5:
+				ok = false
+				break
+		if ok:
+			for spot in active_route["mirrors"]:
+				if Vector2(world.x - spot.x, world.z - spot.z).length() < 2.0:
+					ok = false
+					break
+		if ok and _near_beam_path(world):
+			ok = false
+		if not ok:
+			continue
+		_place_floor_piece(kinds[_rng.randi_range(0, kinds.size() - 1)], center, slot)
+		placed += 1
+
+
+## Floor groupings, built in the slot's local space (+Z faces the room
+## centre). These are seen from every side, so they are dressed all round.
+func _place_floor_piece(kind: String, center: Vector3, slot: Array) -> void:
+	var group := _wall_group(center + slot[0], slot[1])
+	match kind:
+		"card_table":
+			_group_cylinder(group, Vector3(0, 0.37, 0), 0.06, 0.74, _table_material, true)
+			_group_cylinder(group, Vector3(0, 0.03, 0), 0.34, 0.06, _table_material, false)
+			_group_cylinder(group, Vector3(0, 0.76, 0), 0.56, 0.05, _table_material, false)
+			_group_cylinder(group, Vector3(0, 0.79, 0), 0.5, 0.01, _make_material(Color(0.2, 0.32, 0.22)), false)
+			# Cards, a lamp-lit hand abandoned mid-game, and two stools.
+			for card in [[-0.2, 0.12, 0.2], [0.18, -0.1, -0.5], [0.05, 0.24, 1.1]]:
+				var g2 := Node3D.new()
+				g2.position = Vector3(card[0], 0.8, card[1])
+				g2.rotation.y = card[2]
+				group.add_child(g2)
+				_group_box(g2, Vector3.ZERO, Vector3(0.09, 0.005, 0.13),
+					_make_material(Color(0.9, 0.87, 0.78)), false)
+			_group_cylinder(group, Vector3(0.16, 0.82, -0.1), 0.05, 0.06,
+				_make_material(Color(0.75, 0.6, 0.3), 0.8, 0.3), false)
+			for stool in [[-0.78, 0.1], [0.72, -0.2]]:
+				_group_cylinder(group, Vector3(stool[0], 0.24, stool[1]), 0.19, 0.48, _shelf_material, true)
+				_group_cylinder(group, Vector3(stool[0], 0.5, stool[1]), 0.22, 0.05, _rug_material, false)
+		"reading_nook":
+			# Wing chair angled to the room, footstool, and a standard lamp.
+			_group_box(group, Vector3(0, 0.22, 0), Vector3(0.78, 0.44, 0.76), _rug_material, true)
+			_group_box(group, Vector3(0, 0.72, -0.34), Vector3(0.78, 0.58, 0.16), _rug_material, true)
+			for arm_x in [-0.34, 0.34]:
+				_group_box(group, Vector3(arm_x, 0.54, 0), Vector3(0.1, 0.2, 0.74), _table_material, false)
+			_group_box(group, Vector3(0.06, 0.13, 0.64), Vector3(0.4, 0.26, 0.34), _shelf_material, false)
+			_group_cylinder(group, Vector3(-0.68, 0.7, -0.2), 0.028, 1.4, _iron_material, false)
+			_group_cylinder(group, Vector3(-0.68, 0.03, -0.2), 0.16, 0.05, _iron_material, false)
+			_group_cylinder(group, Vector3(-0.68, 1.46, -0.2), 0.19, 0.26, _lantern_glass_material, false)
+			var lamp := OmniLight3D.new()
+			lamp.light_color = Color(1.0, 0.86, 0.6)
+			lamp.light_energy = 0.5
+			lamp.omni_range = 3.6
+			lamp.position = Vector3(-0.68, 1.4, -0.2)
+			group.add_child(lamp)
+			# A book left open on the seat.
+			_group_box(group, Vector3(0.05, 0.46, 0.06), Vector3(0.26, 0.04, 0.2),
+				_make_material(Color(0.4, 0.16, 0.14)), false)
+		"chaise":
+			_group_box(group, Vector3(0, 0.22, 0), Vector3(0.72, 0.44, 1.55), _rug_material, true)
+			_group_box(group, Vector3(0, 0.62, -0.62), Vector3(0.72, 0.44, 0.16), _rug_material, true)
+			_group_box(group, Vector3(-0.3, 0.56, -0.34), Vector3(0.12, 0.24, 0.5), _table_material, false)
+			for leg in [[-0.28, -0.66], [0.28, -0.66], [-0.28, 0.66], [0.28, 0.66]]:
+				_group_box(group, Vector3(leg[0], 0.08, leg[1]), Vector3(0.06, 0.16, 0.06), _table_material, false)
+			_group_cylinder(group, Vector3(0.02, 0.5, -0.4), 0.13, 0.3,
+				_make_material(Color(0.55, 0.24, 0.26)), false)
+		"steamer_trunk":
+			# A travelling trunk with brass corners, lid ajar, hat box on top.
+			var leather := _make_material(Color(0.34, 0.22, 0.14))
+			var brass := _make_material(Color(0.72, 0.56, 0.26), 0.8, 0.3)
+			_group_box(group, Vector3(0, 0.26, 0), Vector3(1.0, 0.52, 0.58), leather, true)
+			_group_box(group, Vector3(0, 0.56, -0.06), Vector3(1.0, 0.1, 0.6), leather, false)
+			for band_x in [-0.3, 0.3]:
+				_group_box(group, Vector3(band_x, 0.3, 0), Vector3(0.07, 0.56, 0.6), brass, false)
+			_group_box(group, Vector3(0, 0.3, 0.3), Vector3(0.14, 0.12, 0.04), brass, false)
+			_group_cylinder(group, Vector3(0.18, 0.72, 0.02), 0.19, 0.22,
+				_make_material(Color(0.25, 0.23, 0.26)), false)
+			_group_box(group, Vector3(-0.62, 0.09, 0.12), Vector3(0.3, 0.18, 0.42), _crate_material, false)
 
 
 ## Framed painting on the wall face above a piece: gold frame, dark
@@ -1501,7 +1797,7 @@ func _spawn_interior_atmosphere() -> void:
 	for z in GRID_SIZE.y:
 		for x in GRID_SIZE.x:
 			var cell := Vector2i(x, z)
-			if not cell in rug_cells and cell != VAULT_STUDY_CELL and _rng.randf() < 0.4:
+			if not cell in rug_cells and cell != VAULT_STUDY_CELL and _rng.randf() < 0.75:
 				rug_cells.append(cell)
 	for cell in rug_cells:
 		_add_decor_box(get_room_center(cell) + Vector3(0, 0.012, 0), Vector3(3.2, 0.02, 2.2), _rug_material)
