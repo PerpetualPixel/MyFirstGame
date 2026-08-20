@@ -751,6 +751,12 @@ func _process(delta: float) -> void:
 ## "[G] Drop" hint rides along (or floats over the held item if nothing
 ## else is in reach).
 func _update_prompt() -> void:
+	# Nothing is interactable once the run is decided, and a floating
+	# "[E] ..." over the victory cinematic looks like a bug.
+	if ui_locked and _prompt.visible:
+		_prompt.visible = false
+	if ui_locked:
+		return
 	# 20 Hz is plenty for prompt tracking; skip the overlap scan otherwise.
 	_prompt_frame += 1
 	if _prompt_frame < 3:
