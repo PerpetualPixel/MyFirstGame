@@ -250,13 +250,19 @@ func _run() -> void:
 	var notebooks := _find_all(main, "NotebookPickup")
 	var ledger: NotebookPickup = null
 	var lore_notes: Array = []
+	var clue_notes: Array = []
 	for nb in notebooks:
 		if "front door code" in nb.note_text:
 			ledger = nb
+		elif nb.name in ["ObservatoryLog", "WorkshopScrap"]:
+			clue_notes.append(nb)
 		else:
 			lore_notes.append(nb)
-	if ledger == null or lore_notes.size() != 5:
-		print("TEST FAIL: expected 1 ledger + 5 lore notes, found %d notebooks" % notebooks.size())
+	# 1 door-code ledger, 5 of the inventor's musings, and the 2 puzzle-box
+	# clues (the observatory log and the workshop scrap).
+	if ledger == null or lore_notes.size() != 5 or clue_notes.size() != 2:
+		print("TEST FAIL: expected 1 ledger + 5 lore + 2 clues, found %d notebooks (%d lore, %d clues)" % [
+			notebooks.size(), lore_notes.size(), clue_notes.size()])
 		quit(1)
 		return
 	ledger.interact(player)
@@ -383,8 +389,8 @@ func _run() -> void:
 		return
 	print("free-angle swivel + detent snap OK")
 
-	# --- Puzzle box: wrong symbol resets it, mistimed input resets it,
-	# the engraved sequence unlocks it and releases the wrench ---
+	# --- Puzzle box, stage one: the dial is dead until all three astral
+	# pendants are carried back and seated ---
 	var wrench: Grabbable = get_nodes_in_group("big_wrenches")[0]
 	if wrench.collision_layer != 0 or wrench.get_parent() != box:
 		print("TEST FAIL: wrench not stashed inside the puzzle box")
@@ -405,6 +411,65 @@ func _run() -> void:
 		print("TEST FAIL: ESC did not close the puzzle box panel")
 		quit(1)
 		return
+	var pendants := get_nodes_in_group("pendants")
+	if pendants.size() != box.sequence_length:
+		print("TEST FAIL: expected %d pendants, found %d" % [box.sequence_length, pendants.size()])
+		quit(1)
+		return
+	# Every pendant must be a hunt: never in the box's own room.
+	for pd in pendants:
+		if gen._cell_of(pd.global_position) == gen._puzzle_box_cell:
+			print("TEST FAIL: pendant %s spawned in the box's own room" % pd.name)
+			quit(1)
+			return
+	# The dial is inert while sockets are empty.
+	box.register_dial_input(box.active_target_sequence[0])
+	if not box.current_input_buffer.is_empty() or box.is_armed():
+		print("TEST FAIL: the dial accepted input before the box was armed")
+		quit(1)
+		return
+	# Carry each pendant back and fit it.
+	for pd in pendants:
+		player.teleport(pd.global_position + Vector3(0, 0, 1.0))
+		for w in 10:
+			await physics_frame
+		player.pick_up(pd)
+		box.interact(player)
+		await physics_frame
+	if not box.is_armed() or box.seated_symbols.size() != box.sequence_length:
+		print("TEST FAIL: seating every pendant did not arm the box (%s)" % [box.seated_symbols])
+		quit(1)
+		return
+	if box._panel_open:
+		box._close_panel()
+
+	# The order itself is only in the observatory log, in another room.
+	var log_note: NotebookPickup = main.find_child("ObservatoryLog", true, false)
+	if log_note == null or gen._cell_of(log_note.global_position) == gen._puzzle_box_cell:
+		print("TEST FAIL: observatory log missing or in the box's own room")
+		quit(1)
+		return
+	log_note.interact(player)
+	var order_names: Array[String] = []
+	for sym in box.required_symbols():
+		order_names.append(PuzzleBox.SYMBOL_LABELS[sym])
+	var logged := ""
+	for entry in PlayerNotes.entries:
+		if "Observatory log" in entry:
+			logged = entry
+	if logged.is_empty():
+		print("TEST FAIL: the observatory log did not reach the notes")
+		quit(1)
+		return
+	# It must name the symbols in the real dial order.
+	var seen_at: Array[int] = []
+	for label_name in order_names:
+		seen_at.append(logged.find(label_name))
+	if seen_at[0] < 0 or seen_at[0] > seen_at[1] or seen_at[1] > seen_at[2]:
+		print("TEST FAIL: log does not name %s in dial order: %s" % [order_names, logged])
+		quit(1)
+		return
+
 	box.interact(player)
 	await process_frame
 
@@ -421,7 +486,6 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# Touching the dial while the mechanism is still advancing fails it too.
 	box.register_dial_input(correct0)
 	if box.current_input_buffer != [correct0]:
 		print("TEST FAIL: correct symbol was not accepted")
@@ -429,33 +493,36 @@ func _run() -> void:
 		return
 	box.register_advance_input()
 	if not box.is_waiting_for_cadence:
-		print("TEST FAIL: lever pull did not start the cadence lock")
+		print("TEST FAIL: lever pull did not start the settle flourish")
 		quit(1)
 		return
-	box.register_dial_input(box.active_target_sequence[2])  # correct next symbol, but too soon
-	if box.current_input_buffer.size() != 0:
-		print("TEST FAIL: input during the cadence lock did not fail the attempt")
+	# The settle is FLOURISH ONLY. It must not swallow or fail the next
+	# click: a player entering the CORRECT order at a normal clicking
+	# pace was told they were wrong every time, which read as a broken
+	# lock in playtest. Dial the rest immediately, mid-settle.
+	var mid_settle: String = box.active_target_sequence[2]
+	box.register_dial_input(mid_settle)
+	if box.current_input_buffer != [correct0, PuzzleBox.ADVANCE_SYMBOL, mid_settle]:
+		print("TEST FAIL: the settle swallowed a correct click (%s)" % [box.current_input_buffer])
 		quit(1)
 		return
+	box.reset_puzzle()
 
-	# The full engraved sequence, waiting out each cadence lock, unlocks it.
+	# The correct order entered back-to-back, with NO waiting at all,
+	# must unlock it — that is exactly how a player clicks.
 	for i in box.active_target_sequence.size():
 		var expected: String = box.active_target_sequence[i]
 		if expected == PuzzleBox.ADVANCE_SYMBOL:
 			box.register_advance_input()
-			for w in 60:  # cadence_window_sec (0.7s) + margin
-				await physics_frame
-			if box.is_waiting_for_cadence:
-				print("TEST FAIL: cadence lock never cleared")
-				quit(1)
-				return
 		else:
 			box.register_dial_input(expected)
 	if box.is_locked:
 		print("TEST FAIL: puzzle box did not unlock on the correct sequence")
 		quit(1)
 		return
-	for i in 60:
+	# The unlock flourish runs ~1.4 s (lever, then the compartment
+	# sliding open) before the wrench is handed over.
+	for i in 120:
 		await physics_frame
 	if wrench.collision_layer == 0 or wrench.get_parent() == box:
 		print("TEST FAIL: compartment did not release the wrench")

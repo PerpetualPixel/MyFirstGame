@@ -47,6 +47,33 @@ const RADIO := {
 	"last_minute": "Headlights on the drive. One minute, no more.",
 }
 
+## The clue that carries the puzzle box's answer. The pendants tell a
+## player WHICH three symbols are in play; this tells them the order,
+## in plain named prose so it can be acted on ("then the Moon" is only
+## useful if the dial tiles say Moon — they do).
+## `order` is the box's symbol sequence, e.g. ["moon", "comet", "sun"].
+static func observatory_log(order: Array) -> String:
+	var names: Array[String] = []
+	for sym in order:
+		names.append(PuzzleBox.SYMBOL_LABELS.get(sym, str(sym)))
+	return ("Observatory log, final entry — \"I sealed the box on the night "
+		+ "of the eclipse. I set her the way the sky ran: the %s went first, "
+		+ "the %s answered, and the %s closed the lid behind them. Three "
+		+ "pendants, three sockets, and only that order will do. If you are "
+		+ "reading this, you have my pendants — so you are nearly there.\" "
+		+ "— C.G.") % [names[0], names[1], names[2]]
+
+
+## A second, shorter clue for the same lock: names only the FIRST symbol,
+## as a hedge for a player who never finds the log. Deliberately partial —
+## it narrows six possible orders to two, it does not hand over the answer.
+static func pendant_note(order: Array) -> String:
+	var first: String = PuzzleBox.SYMBOL_LABELS.get(order[0], str(order[0]))
+	return ("Workshop scrap, in the inventor's hand — \"Reminder to myself: "
+		+ "she always starts with the %s. I forget it every single time.\" "
+		+ "— C.G.") % first
+
+
 ## Resident Evil-style completion grade for a winning run, from time
 ## elapsed on the 4:00 clock.
 static func rank_for(elapsed: float) -> Dictionary:

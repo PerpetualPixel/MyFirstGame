@@ -51,7 +51,13 @@ func _run() -> void:
 
 		# 2. No pickup may come to rest enclosed in a decor mesh.
 		var decor := _decor_boxes(gen)
-		for item_name in ["Crowbar", "Fuse_B", "SmallWrench", "Notebook"]:
+		# The puzzle box's pendants and clue notes are hunted for by
+		# sight, so they matter here as much as the tools do.
+		var hunted: Array[String] = ["Crowbar", "Fuse_B", "SmallWrench", "Notebook",
+			"ObservatoryLog", "WorkshopScrap"]
+		for pd in gen.get_tree().get_nodes_in_group("pendants"):
+			hunted.append(pd.name)
+		for item_name in hunted:
 			var item := _find(gen, item_name)
 			if item == null:
 				continue
@@ -77,6 +83,27 @@ func _run() -> void:
 			print("  also: %s" % extra)
 		quit(1)
 		return
+
+	# Pendants must also be lit: a small dark medallion on a dark floor
+	# is unfindable, and three of them is then no hunt at all.
+	var lit_check := MansionGenerator.new()
+	lit_check.rng_seed = 4242
+	root.add_child(lit_check)
+	for i in 10:
+		await physics_frame
+	for pd in lit_check.get_tree().get_nodes_in_group("pendants"):
+		var lamp: OmniLight3D = null
+		for child in pd.get_children():
+			if child is OmniLight3D:
+				lamp = child
+		var disc := pd.get_node_or_null("Disc") as MeshInstance3D
+		if lamp == null or disc == null or disc.material_override == null:
+			print("TEST FAIL: pendant %s has no lamp/emissive disc to be spotted by" % pd.name)
+			quit(1)
+			return
+	lit_check.queue_free()
+	await physics_frame
+	print("pendants: lit and findable")
 
 	# Every authored spot must actually have been exercised above.
 	for key in WANT_SPOTS:

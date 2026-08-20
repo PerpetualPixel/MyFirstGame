@@ -6,14 +6,19 @@ extends Interactable
 ## styled after a mechanical combination lock. Replaces the old
 ## grandfather clock as the Brass Wrench's hiding place.
 ##
-## The control logic mirrors a real dial-and-lever combination lock:
-## click one of four symbol tiles to guess the CURRENT slot, then pull
-## the lever to commit it and advance the mechanism. Every click is
-## validated immediately against the secret sequence (engraved on the
-## case, shuffled per run) — a wrong symbol, or touching the dial while
-## the mechanism is still advancing from the last pull, resets the
-## whole attempt back to the first slot. No permanent penalty: is_locked
-## stays true until solved, so a player can retry forever.
+## Two stages. FIRST the box must be armed: three astral pendants are
+## scattered around the house and each has to be carried back and
+## seated in its socket. Seating them reveals WHICH three symbols this
+## run uses — the dial and lever stay dead until all three are in.
+## THEN the order has to be dialled: click a symbol tile, pull the
+## lever to commit it, repeat. The order is not shown on the box; it
+## is written in the inventor's observatory log, which spawns in a
+## different room (see Story.observatory_log).
+##
+## A wrong symbol resets the attempt back to the first slot; nothing
+## else does. The lever's settle is pure flourish and gates no input
+## (see cadence_window_sec). No permanent penalty: is_locked stays
+## true until solved, so a player can retry forever.
 ##
 ## Signal names and the register_*/validate state machine follow the
 ## brief exactly (PuzzleBoxController): dial input and advance input
@@ -24,19 +29,25 @@ signal input_registered(symbol_name: String)
 signal advance_clicked
 signal sequence_failed
 signal puzzle_unlocked
+signal pendant_seated(symbol_name: String)
+signal box_armed
 
 ## Four faces on the dial; the target sequence draws from these.
-const SYMBOLS := ["sun", "moon", "star", "sparkle"]
+const SYMBOLS := ["sun", "moon", "star", "comet"]
 const ADVANCE_SYMBOL := "ADVANCE"
-const SYMBOL_LABELS := {"sun": "Sun", "moon": "Moon", "star": "Star", "sparkle": "Sparkle"}
+const SYMBOL_LABELS := {"sun": "Sun", "moon": "Moon", "star": "Star", "comet": "Comet"}
 ## Distinct symbol glyphs (☉ ☾ ✦ ✧-style), one Roman-numeral-equivalent
 ## the case engraves so the sequence can be read, not guessed blind.
-const SYMBOL_GLYPHS := {"sun": "☉", "moon": "☾", "star": "★", "sparkle": "✦"}
+const SYMBOL_GLYPHS := {"sun": "☉", "moon": "☾", "star": "★", "comet": "✦"}
 
 @export var sequence_length: int = 3
-## Mechanical advance delay: touching the dial before the gears finish
-## settling from the last lever pull fails the whole attempt.
-@export var cadence_window_sec: float = 0.7
+## How long the lever takes to visibly settle after a pull. This is
+## FLOURISH ONLY — it drives the lever animation and the panel's
+## "gears settling" line, and deliberately gates nothing. It used to
+## reject (and then fail) any input inside the window, which meant a
+## player entering the CORRECT order at a normal clicking pace was
+## told they were wrong every time. That read as a broken lock.
+@export var cadence_window_sec: float = 0.25
 ## Seed for the secret-sequence shuffle, assigned by the generator from
 ## the shared run RNG before add_child; 0 = roll from the global RNG.
 @export var shuffle_seed: int = 0
@@ -46,6 +57,9 @@ var active_target_sequence: Array = []
 var current_input_buffer: Array = []
 var is_locked := true
 var is_waiting_for_cadence := false
+## Symbols whose pendant has been seated; the dial is dead until every
+## symbol in the combination is represented here.
+var seated_symbols: Array[String] = []
 
 var minigame: CanvasLayer
 
@@ -54,6 +68,7 @@ var _cadence_timer: Timer
 var _lever_pivot: Node3D
 var _compartment: Node3D
 var _reel_labels: Array[Label3D] = []
+var _socket_labels: Array[Label3D] = []
 
 
 func _ready() -> void:
@@ -74,12 +89,33 @@ func _ready() -> void:
 	_build_panel()
 
 
-## RE-style: [E] always inspects; the dial and lever are worked from
-## inside the overlay. It only opens on the interacting machine.
+## [E] while carrying one of this box's pendants fits it into its
+## socket; otherwise it opens the dial overlay (on the interacting
+## machine only).
 func interact(by: Node3D) -> void:
+	var pendant := _carried_pendant(by)
+	if pendant != null:
+		# The seating replicates; spending the item is local to the
+		# carrier, the same way the breaker consumes its fuses.
+		request_seat_pendant(by, pendant.pendant_symbol)
+		if by.has_method("inventory_remove"):
+			by.inventory_remove(pendant)
+		pendant.queue_free()
+		super.interact(by)
+		return
 	if by == null or not by.has_method("is_local_player") or by.is_local_player():
 		_open_panel()
 	super.interact(by)
+
+
+## A pendant in the interactor's pack that this box still wants.
+func _carried_pendant(by: Node3D) -> AstralPendant:
+	if by == null or by.get("inventory") == null:
+		return null
+	for item in by.inventory:
+		if item is AstralPendant and accepts_pendant((item as AstralPendant).pendant_symbol):
+			return item
+	return null
 
 
 ## Park an item (frozen, collision off) inside the lower cabinet until
@@ -112,15 +148,59 @@ func _initialize_combination() -> void:
 		active_target_sequence.append(ADVANCE_SYMBOL)
 
 
+# --- Stage one: seating the pendants -------------------------------------
+
+
+## The three symbols this run's combination uses, in dial order.
+func required_symbols() -> Array:
+	var out: Array = []
+	for i in sequence_length:
+		out.append(active_target_sequence[i * 2])
+	return out
+
+
+## True once every pendant is home and the dial will actually turn.
+func is_armed() -> bool:
+	for sym in required_symbols():
+		if not sym in seated_symbols:
+			return false
+	return true
+
+
+## Does this pendant belong to this box, and is its socket still empty?
+func accepts_pendant(symbol: String) -> bool:
+	return is_locked and symbol in required_symbols() and not symbol in seated_symbols
+
+
+func seat_pendant(symbol: String) -> void:
+	if not accepts_pendant(symbol):
+		return
+	seated_symbols.append(symbol)
+	AudioSynthesizer.play_at("plug", global_position, -6.0, 1.1)
+	pendant_seated.emit(symbol)
+	_refresh_sockets()
+	if is_armed():
+		AudioSynthesizer.play_at("power_up", global_position, -8.0, 1.3)
+		box_armed.emit()
+
+
+func request_seat_pendant(_by: Node3D, symbol: String) -> void:
+	if NetworkSession.multiplayer_active:
+		_net_seat_pendant.rpc(symbol)
+	else:
+		seat_pendant(symbol)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _net_seat_pendant(symbol: String) -> void:
+	seat_pendant(symbol)
+
+
 # --- Controller state machine (mirrors the provided brief) ---------------
 
 
 func register_dial_input(symbol: String) -> void:
-	if not is_locked:
-		return
-	if is_waiting_for_cadence:
-		# Touching the dial during the mechanical advance pause fails it.
-		_trigger_failure()
+	if not is_locked or not is_armed():
 		return
 	current_input_buffer.append(symbol)
 	input_registered.emit(symbol)
@@ -128,7 +208,7 @@ func register_dial_input(symbol: String) -> void:
 
 
 func register_advance_input() -> void:
-	if not is_locked or is_waiting_for_cadence:
+	if not is_locked or not is_armed():
 		return
 	current_input_buffer.append(ADVANCE_SYMBOL)
 	advance_clicked.emit()
@@ -367,15 +447,40 @@ func _build_case() -> void:
 	rosette.position = Vector3(0, 0, 0.03)
 	_compartment.add_child(rosette)
 
-	var plaque := Label3D.new()
-	plaque.text = "%s  %s  %s" % [
-		SYMBOL_GLYPHS[active_target_sequence[0]], SYMBOL_GLYPHS[active_target_sequence[2]],
-		SYMBOL_GLYPHS[active_target_sequence[4]]]
-	plaque.font_size = 40
-	plaque.pixel_size = 0.005
-	plaque.modulate = Color(0.9, 0.78, 0.5)
-	plaque.position = Vector3(0, 1.42, 0.28)
-	add_child(plaque)
+	# Three empty pendant sockets. They deliberately do NOT spell out
+	# the order — they fill in as pendants are seated, so the case tells
+	# you WHICH symbols are in play while the observatory log tells you
+	# what order to dial them.
+	var socket_plate := Label3D.new()
+	socket_plate.text = "PENDANTS"
+	socket_plate.font_size = 18
+	socket_plate.pixel_size = 0.0035
+	socket_plate.modulate = Color(0.7, 0.6, 0.38)
+	socket_plate.position = Vector3(0, 1.3, 0.28)
+	add_child(socket_plate)
+	for i in sequence_length:
+		var sx := -0.24 + i * 0.24
+		_box(Vector3(sx, 1.42, 0.28), Vector3(0.17, 0.17, 0.03), wood_dark)
+		var socket := Label3D.new()
+		socket.text = "·"
+		socket.font_size = 40
+		socket.pixel_size = 0.005
+		socket.modulate = Color(0.45, 0.38, 0.28)
+		socket.position = Vector3(sx, 1.42, 0.30)
+		add_child(socket)
+		_socket_labels.append(socket)
+
+
+## Sockets show a dot while empty and the pendant's glyph once it is
+## home, filling left to right in the order they were found.
+func _refresh_sockets() -> void:
+	for i in _socket_labels.size():
+		if i < seated_symbols.size():
+			_socket_labels[i].text = SYMBOL_GLYPHS[seated_symbols[i]]
+			_socket_labels[i].modulate = Color(1.0, 0.85, 0.45)
+		else:
+			_socket_labels[i].text = "·"
+			_socket_labels[i].modulate = Color(0.45, 0.38, 0.28)
 
 
 func _mat(color: Color, metallic := 0.0, roughness := 0.7) -> StandardMaterial3D:
@@ -425,6 +530,7 @@ func _cyl(parent: Node3D, at: Vector3, radius: float, height: float, mat: Standa
 
 var _panel_open := false
 var _tile_buttons: Array[Button] = []
+var _tile_captions: Array[Label] = []
 var _lever_button: Button
 var _reel_buttons: Array[Button] = []
 var _panel_hint: Label
@@ -476,7 +582,7 @@ func _build_panel() -> void:
 	board.add_child(title)
 
 	_panel_engraving = Label.new()
-	_panel_engraving.text = "Engraved on the case: %s" % _engraving_text()
+	_panel_engraving.text = _status_text()
 	_panel_engraving.add_theme_font_size_override("font_size", 20)
 	_panel_engraving.add_theme_color_override("font_color", Color(0.85, 0.68, 0.3))
 	_panel_engraving.position = Vector2(0, 48)
@@ -484,7 +590,8 @@ func _build_panel() -> void:
 	_panel_engraving.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	board.add_child(_panel_engraving)
 
-	# Four dial tiles across the top.
+	# Four dial tiles across the top, each captioned with its name so a
+	# written clue ("then the Moon") can actually be acted on.
 	for i in SYMBOLS.size():
 		var sym: String = SYMBOLS[i]
 		var btn := _flat_button(Vector2(150.0 + 110.0 * i, 100), Vector2(90, 90))
@@ -492,6 +599,14 @@ func _build_panel() -> void:
 		btn.pressed.connect(_on_tile_pressed.bind(sym))
 		board.add_child(btn)
 		_tile_buttons.append(btn)
+		var caption := Label.new()
+		caption.text = SYMBOL_LABELS[sym]
+		caption.add_theme_font_size_override("font_size", 13)
+		caption.position = Vector2(150.0 + 110.0 * i, 192)
+		caption.size = Vector2(90, 18)
+		caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		board.add_child(caption)
+		_tile_captions.append(caption)
 
 	# Lever button beside the dial.
 	_lever_button = _flat_button(Vector2(605, 100), Vector2(90, 90))
@@ -543,6 +658,17 @@ func _build_panel() -> void:
 	advance_clicked.connect(func() -> void: _refresh_panel())
 	sequence_failed.connect(_on_panel_failed)
 	puzzle_unlocked.connect(_on_panel_unlocked)
+
+
+## What the overlay says about stage one, above the dial.
+func _status_text() -> String:
+	if not is_armed():
+		var marks: Array[String] = []
+		for i in sequence_length:
+			marks.append(SYMBOL_GLYPHS[seated_symbols[i]] if i < seated_symbols.size() else "·")
+		return "Pendant sockets:  %s     (%d of %d seated)" % [
+			"  ".join(marks), seated_symbols.size(), sequence_length]
+	return "Sockets full — dial the order from his observatory log"
 
 
 func _engraving_text() -> String:
@@ -638,17 +764,27 @@ func _refresh_panel() -> void:
 	_lever_button.queue_redraw()
 	for reel in _reel_buttons:
 		reel.queue_redraw()
+	_panel_engraving.text = _status_text()
+	for i in _tile_buttons.size():
+		var lit: bool = not is_armed() or SYMBOLS[i] in seated_symbols
+		_tile_captions[i].add_theme_color_override("font_color",
+			Color(0.85, 0.8, 0.68) if lit else Color(0.4, 0.37, 0.32))
 	if not is_locked:
 		_panel_hint.text = "The mechanism gives — the lock releases!"
 		_panel_hint.modulate = Color(0.55, 1.0, 0.65)
+	elif not is_armed():
+		var missing := sequence_length - seated_symbols.size()
+		_panel_hint.text = "The dial will not turn: %s still missing.  [ESC] steps away." % (
+			"one pendant" if missing == 1 else "%d pendants" % missing)
+		_panel_hint.modulate = Color(1.0, 0.6, 0.4)
 	elif is_waiting_for_cadence:
-		_panel_hint.text = "Gears settling — wait before touching the dial.  [ESC] steps away."
+		_panel_hint.text = "Gears settling…  [ESC] steps away."
 		_panel_hint.modulate = Color(1.0, 0.8, 0.4)
 	elif current_input_buffer.size() % 2 == 1:
 		_panel_hint.text = "Symbol accepted — pull the lever to advance.  [ESC] steps away."
 		_panel_hint.modulate = Color(0.55, 1.0, 0.65)
 	else:
-		_panel_hint.text = "Match the engraving: click a symbol, then pull the lever.  [ESC] steps away."
+		_panel_hint.text = "Dial the log's order: click a symbol, then pull the lever.  [ESC] steps away."
 		_panel_hint.modulate = Color.WHITE
 
 
@@ -715,7 +851,7 @@ func _draw_glyph(item: CanvasItem, c: Vector2, symbol: String, r: float, color: 
 				var rad := r if k % 2 == 0 else r * 0.42
 				pts.append(c + Vector2(cos(a), sin(a)) * rad)
 			item.draw_colored_polygon(pts, color)
-		"sparkle":
+		"comet":
 			for a in [0.0, PI / 2.0, PI, 3.0 * PI / 2.0]:
 				var dir := Vector2(cos(a), sin(a))
 				var perp := Vector2(-dir.y, dir.x) * 0.12

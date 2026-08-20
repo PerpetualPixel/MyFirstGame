@@ -38,6 +38,7 @@ const NOTEBOOK_SCENE := preload("res://scenes/NotebookPickup.tscn")
 const GARAGE_BUTTON_SCRIPT := preload("res://scripts/puzzles/garage_door_button.gd")
 const PUZZLE_BOX_SCRIPT := preload("res://scripts/puzzles/puzzle_box.gd")
 const LOCK_BOX_SCRIPT := preload("res://scripts/puzzles/lock_box.gd")
+const PENDANT_SCENE := preload("res://scenes/AstralPendant.tscn")
 const PRISM_SCENE := preload("res://scenes/Prism.tscn")
 
 ## Three hand-authored, guaranteed-solvable laser routes; one is drawn per
@@ -147,6 +148,12 @@ var _lockbox_code: Array[int] = []
 ## Floor spots holding the inventor's lore notes (and their little
 ## stands); furniture keeps clear of them.
 var _lore_spots: Array[Vector3] = []
+## The puzzle box's answer, scattered: which symbols (pendants) and
+## where its two clue notes went. Read by tests.
+var _pendant_order: Array = []
+var _pendant_spots: Array[Vector3] = []
+var _log_spot := Vector3.ZERO
+var _scrap_spot := Vector3.ZERO
 ## The seeded pick each garage-area item landed on this run (read by the
 ## variety/co-op tests to prove layouts differ and replicate).
 var _crowbar_spot := Vector3.ZERO
@@ -659,6 +666,10 @@ func _spawn_puzzle() -> void:
 	var wrench := BRASS_WRENCH_SCENE.instantiate() as Grabbable
 	wrench.name = "Wrench"
 	puzzle_box.stash_item(wrench)
+	_spawn_pendants_and_clues(puzzle_box)
+	reserved.append_array(_pendant_spots)
+	reserved.append(_log_spot)
+	reserved.append(_scrap_spot)
 
 	# The inventor's notes stand at fixed spots beside their machines.
 	# Work them out and reserve them BEFORE the mirrors park, or a
@@ -705,6 +716,66 @@ func _reveal_lockbox_digit(index: int, source: String) -> void:
 ## machine it muses about (the garage power note sits on its own crate,
 ## spawned with the garage). Positions dodge the door lanes (x/z 0) and
 ## the corner beam spots.
+## The puzzle box's two-stage answer, scattered across the house.
+## Stage one: three astral pendants, one per symbol in this run's
+## combination, each in a DIFFERENT room from the box (and from each
+## other) so arming it is a hunt. Stage two: the order, written in the
+## inventor's observatory log — plus a shorter workshop scrap naming
+## only the first symbol, as a hedge if the log is never found.
+## Every one of them draws from several seeded spots.
+func _spawn_pendants_and_clues(puzzle_box: Node) -> void:
+	var order: Array = puzzle_box.required_symbols()
+	_pendant_order = order.duplicate()
+	# Candidate rooms: anywhere but the box's own room and the sealed
+	# vault (which opens far too late to gate the box behind it).
+	var rooms: Array[Vector2i] = []
+	for z in GRID_SIZE.y:
+		for x in GRID_SIZE.x:
+			var cell := Vector2i(x, z)
+			if cell != _puzzle_box_cell and cell != VAULT_STUDY_CELL:
+				rooms.append(cell)
+	for i in range(rooms.size() - 1, 0, -1):
+		var j := _rng.randi_range(0, i)
+		var tmp := rooms[i]
+		rooms[i] = rooms[j]
+		rooms[j] = tmp
+
+	# Four spots per room, all against a wall and clear of the door
+	# lanes at x/z = 0, so a pendant never lands underfoot mid-corridor.
+	var offsets: Array[Vector3] = [
+		Vector3(-3.2, 0.15, -3.2), Vector3(3.2, 0.15, -3.2),
+		Vector3(-3.2, 0.15, 3.2), Vector3(3.2, 0.15, 3.2),
+	]
+	_pendant_spots.clear()
+	for i in order.size():
+		var cell: Vector2i = rooms[i % rooms.size()]
+		var offset: Vector3 = offsets[_rng.randi_range(0, offsets.size() - 1)]
+		var at := get_room_center(cell) + offset
+		var pendant := PENDANT_SCENE.instantiate() as AstralPendant
+		pendant.name = "Pendant_%s" % order[i]
+		pendant.pendant_symbol = order[i]
+		pendant.position = at
+		pendant.rotation.y = _rng.randf_range(0.0, TAU)
+		_generated_root.add_child(pendant)
+		_pendant_spots.append(at)
+		_lore_spots.append(at)  # furniture keeps clear of it too
+
+	# The two clue notes, each in a room holding no pendant.
+	var clue_rooms: Array[Vector2i] = []
+	for cell in rooms:
+		if not cell in rooms.slice(0, order.size()):
+			clue_rooms.append(cell)
+	if clue_rooms.is_empty():
+		clue_rooms = rooms
+	_log_spot = get_room_center(clue_rooms[0]) + offsets[_rng.randi_range(0, offsets.size() - 1)]
+	_spawn_lore_note("ObservatoryLog", Story.observatory_log(order), _log_spot,
+		"[E] Read the Observatory Log")
+	var scrap_room: Vector2i = clue_rooms[1 % clue_rooms.size()]
+	_scrap_spot = get_room_center(scrap_room) + offsets[_rng.randi_range(0, offsets.size() - 1)]
+	_spawn_lore_note("WorkshopScrap", Story.pendant_note(order), _scrap_spot,
+		"[E] Read the Workshop Scrap")
+
+
 ## Where each of the inventor's notes will stand, as
 ## [node_name, text, world_spot]. Computed before the mirrors park so
 ## their spots can be reserved; nothing is built until
@@ -733,7 +804,8 @@ func _spawn_lore_notes(planned: Array) -> void:
 		_spawn_lore_note(entry[0], entry[1], entry[2])
 
 
-func _spawn_lore_note(node_name: String, text: String, at: Vector3) -> void:
+func _spawn_lore_note(node_name: String, text: String, at: Vector3,
+		prompt := "[E] Read the Inventor's Note") -> void:
 	# A small dark reading stand so the page never lies on bare floor.
 	_add_prop(at + Vector3(0, 0.15, 0), Vector3(0.42, 0.3, 0.36), _shelf_material)
 	var note := NOTEBOOK_SCENE.instantiate() as NotebookPickup
@@ -741,7 +813,7 @@ func _spawn_lore_note(node_name: String, text: String, at: Vector3) -> void:
 	note.position = at + Vector3(0, 0.32, 0)
 	note.rotation.y = _rng.randf_range(0.0, TAU)
 	note.note_text = text
-	note.prompt = "[E] Read the Inventor's Note"
+	note.prompt = prompt
 	_generated_root.add_child(note)
 	_lore_spots.append(at)
 
